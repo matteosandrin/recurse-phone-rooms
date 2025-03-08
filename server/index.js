@@ -4,10 +4,10 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import path from 'path';
-import pg from 'pg';
 import { fileURLToPath } from 'url';
+import pool from './db.js';
+import { authenticate, canDeleteBooking } from './auth-middleware.js';
 
-const { Pool } = pg;
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -23,16 +23,6 @@ app.use(cors({
 
 // Parse JSON request bodies
 app.use(express.json());
-
-// Database connection
-const pool = new Pool({
-  user: process.env.VITE_DB_USER,
-  host: process.env.VITE_DB_HOST,
-  database: process.env.VITE_DB_NAME,
-  password: process.env.VITE_DB_PASSWORD,
-  port: parseInt(process.env.VITE_DB_PORT || '5432'),
-  ssl: process.env.VITE_DB_SSL === 'true'
-});
 
 // Serve static files from the dist directory in production
 app.use(express.static(path.join(__dirname, '../dist')));
@@ -60,70 +50,56 @@ app.post('/api/auth/callback', async (req, res) => {
       });
     } catch (tokenError) {
       console.error('OAuth token exchange error:', tokenError.response?.data || tokenError.message);
-      return res.status(401).json({
+      return res.status(400).json({
         error: 'Failed to exchange authorization code for token',
-        details: tokenError.response?.data || { error: 'unknown_error' }
+        details: tokenError.response?.data || { message: tokenError.message }
       });
     }
 
-    const { access_token } = tokenResponse.data;
-    console.log('Successfully obtained access token');
+    const { access_token, token_type } = tokenResponse.data;
+
+    if (!access_token) {
+      return res.status(400).json({ error: 'No access token received' });
+    }
 
     // Get user info from Recurse API
-    let userResponse;
     try {
-      userResponse = await axios.get('https://www.recurse.com/api/v1/profiles/me', {
+      const userResponse = await axios.get('https://www.recurse.com/api/v1/profiles/me', {
         headers: {
           'Authorization': `Bearer ${access_token}`
         }
       });
-    } catch (profileError) {
-      console.error('Error fetching Recurse profile:', profileError.response?.data || profileError.message);
-      return res.status(401).json({
-        error: 'Failed to fetch user profile from Recurse Center',
-        details: profileError.response?.data || { error: 'profile_fetch_error' }
-      });
-    }
 
-    const userData = userResponse.data;
-    console.log('Retrieved user profile for:', userData.email);
+      const userData = userResponse.data;
 
-    // Create or update user in our database
-    try {
-      const dbResult = await pool.query(
-        `INSERT INTO users (recurse_id, email, name, access_token)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (recurse_id) DO UPDATE
-         SET email = $2, name = $3, access_token = $4
-         RETURNING id, recurse_id, email, name`,
-        [userData.id, userData.email, userData.name, access_token]
-      );
-
-      const dbUser = dbResult.rows[0];
-      console.log('User data saved to database, ID:', dbUser.id);
-
-      // Return user data to frontend
-      res.json({
-        id: dbUser.id,
-        email: dbUser.email,
-        name: dbUser.name,
-        recurseId: dbUser.recurse_id,
+      // Extract user data we need
+      const user = {
+        id: userData.id.toString(),
+        email: userData.email,
+        name: userData.name,
+        recurseId: userData.id,
         accessToken: access_token
+      };
+
+      // Return user data to client
+      res.status(200).json(user);
+    } catch (profileError) {
+      console.error('Failed to get profile:', profileError.message);
+      return res.status(400).json({
+        error: 'Failed to fetch user profile',
+        details: { message: profileError.message }
       });
-    } catch (dbError) {
-      console.error('Database error:', dbError);
-      return res.status(500).json({ error: 'Failed to save user data to database' });
     }
   } catch (error) {
     console.error('Unhandled OAuth error:', error.message);
     res.status(500).json({
       error: 'A server error occurred during authentication',
-      details: { error: 'server_error' }
+      details: { message: error.message }
     });
   }
 });
 
-// API route to get rooms
+// API route to get all rooms
 app.get('/api/rooms', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM rooms ORDER BY name');
@@ -134,14 +110,14 @@ app.get('/api/rooms', async (req, res) => {
   }
 });
 
-// API route to get bookings
+// API route to get all bookings
 app.get('/api/bookings', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT b.*, r.name as room_name, u.email as user_email
+      SELECT b.*, r.name as room_name, u.email as user_email, u.name as user_name
       FROM bookings b
       JOIN rooms r ON b.room_id = r.id
-      JOIN users u ON b.user_id = u.id
+      LEFT JOIN users u ON b.user_id = u.id
       ORDER BY b.start_time
     `);
     res.json(result.rows);
@@ -152,8 +128,12 @@ app.get('/api/bookings', async (req, res) => {
 });
 
 // API route to create a booking
-app.post('/api/bookings', async (req, res) => {
-  const { user_id, room_id, start_time, end_time, notes } = req.body;
+// Add authentication middleware
+app.post('/api/bookings', authenticate, async (req, res) => {
+  // If we have authentication, use the authenticated user ID
+  // Otherwise, use the one from the request body
+  const user_id = req.userId || req.body.user_id;
+  const { room_id, start_time, end_time, notes } = req.body;
 
   try {
     // Check for booking conflicts
@@ -206,20 +186,13 @@ app.get('/api/bookings/check-availability', async (req, res) => {
   }
 });
 
-// API route to delete a booking
-app.delete('/api/bookings/:id', async (req, res) => {
+// API route to delete a booking - now uses authentication middleware
+app.delete('/api/bookings/:id', canDeleteBooking, async (req, res) => {
   const bookingId = req.params.id;
 
   try {
-    // First check if the booking exists
-    const checkResult = await pool.query(
-      'SELECT * FROM bookings WHERE id = $1',
-      [bookingId]
-    );
-
-    if (checkResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
+    // The canDeleteBooking middleware has already checked if the booking exists
+    // and if the user has permission to delete it
 
     // Delete the booking
     await pool.query(
@@ -234,7 +207,12 @@ app.delete('/api/bookings/:id', async (req, res) => {
   }
 });
 
-// Start the server
+// All other routes should serve the frontend in production
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist/index.html'));
+});
+
+// Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
