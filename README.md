@@ -1,22 +1,25 @@
 # Recurse Center Phone Booking System
 
-A simple application for Recurse Center participants to book phone rooms for calls, interviews, or meetings.
+A simple application for Recurse Center participants to book phone rooms for calls, interviews, or meetings. This system provides an intuitive interface for viewing and booking available rooms while preventing scheduling conflicts.
 
 ## Features
 
 - OAuth authentication with Recurse Center
-- View available phone rooms
-- Book time slots for phone rooms
-- See existing bookings
-- Prevent double-bookings
+- View available phone rooms with color-coded display
+- Book time slots for phone rooms with drag-and-drop interface
+- See existing bookings in a weekly calendar view
+- Prevent double-bookings with built-in validation
+- Authentication-protected API endpoints for secure booking management
 
 ## Technology Stack
 
-- Svelte with TypeScript
-- Tailwind CSS for styling
-- Event Calendar for the booking interface
-- PostgreSQL database
-- Vite for development and building
+- **Frontend**: Svelte with TypeScript
+- **Styling**: Tailwind CSS for responsive design
+- **Calendar**: Custom calendar implementation with time slot selection
+- **Backend**: Express.js REST API
+- **Database**: PostgreSQL
+- **Development**: Vite for fast development and building
+- **Testing**: Playwright for end-to-end tests, custom API tests
 
 ## Prerequisites
 
@@ -29,7 +32,7 @@ A simple application for Recurse Center participants to book phone rooms for cal
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/recurse-bookings.git
+git clone https://github.com/TreyLawrence/recurse-bookings.git
 cd recurse-bookings
 ```
 
@@ -72,28 +75,72 @@ npm run migrate
 6. Start the development server:
 
 ```bash
-npm run dev
+npm run dev:all
 ```
 
 7. Open http://localhost:5173 in your browser
+
+## Project Structure
+
+```
+recurse-bookings/
+├── src/                  # Frontend Svelte application
+│   ├── lib/              # Shared utility code
+│   │   ├── auth.ts       # Authentication utilities
+│   │   └── browserDb.ts  # Database API client
+│   ├── routes/           # Svelte components for routes
+│   └── App.svelte        # Main application component
+├── server/               # Backend Express API
+│   ├── index.js          # Main server file and API routes
+│   └── db.js             # Database connection and queries
+├── migrations/           # Database migration scripts
+├── tests/                # Test files
+│   ├── api/              # API tests
+│   └── e2e/              # End-to-end tests with Playwright
+└── playwright.config.ts  # Playwright configuration
+```
 
 ## Database Schema
 
 The application uses three main tables:
 
-- `users`: Stores user information from Recurse Center
-- `rooms`: Lists available phone rooms
-- `bookings`: Tracks room reservations
+- `users`: Stores user information from Recurse Center (id, email, name, recurse_id)
+- `rooms`: Lists available phone rooms (id, name, description, capacity)
+- `bookings`: Tracks room reservations (id, user_id, room_id, start_time, end_time, notes)
+
+## Testing
+
+The application includes both API tests and end-to-end tests:
+
+### Running API Tests
+
+```bash
+npx playwright test tests/api/
+```
+
+These tests verify the backend API functionality including booking creation, availability checking, and permission validation.
+
+### Running End-to-End Tests
+
+```bash
+npx playwright test tests/e2e/
+```
+
+End-to-end tests use Playwright to simulate user interactions in a browser environment, testing the entire application flow.
 
 ## Development
 
 ### Available Scripts
 
-- `npm run dev`: Start the development server
+- `npm run dev:all`: Start both the frontend and backend servers
+- `npm run dev`: Start only the frontend development server
+- `npm run server`: Start only the backend server
 - `npm run build`: Build for production
 - `npm run preview`: Preview the production build
 - `npm run check`: Type-check the code
 - `npm run migrate`: Run database migrations
+- `npm test`: Run all tests
+- `npm run test:ui`: Run tests with Playwright UI mode
 
 ## Deploying to Production
 
