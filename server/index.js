@@ -27,6 +27,68 @@ app.use(express.json());
 // Serve static files from the dist directory in production
 app.use(express.static(path.join(__dirname, '../dist')));
 
+// Special endpoint for test setup (only available in development mode)
+if (process.env.NODE_ENV !== 'production') {
+  app.post('/api/test/setup-users', async (req, res) => {
+    const { users } = req.body;
+
+    if (!users || !Array.isArray(users)) {
+      return res.status(400).json({ error: 'Users array is required' });
+    }
+
+    try {
+      // Begin transaction
+      await pool.query('BEGIN');
+
+      // Insert/update each user
+      for (const user of users) {
+        // Check if required fields are present
+        if (!user.id || !user.name || !user.email) {
+          await pool.query('ROLLBACK');
+          return res.status(400).json({ error: 'Each user must have id, name, and email' });
+        }
+
+        // Check if user exists
+        const checkResult = await pool.query(
+          'SELECT * FROM users WHERE id = $1',
+          [user.id]
+        );
+
+        if (checkResult.rows.length === 0) {
+          // Insert new user
+          await pool.query(
+            `INSERT INTO users (id, name, email, recurse_id, access_token)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [user.id, user.name, user.email, user.recurse_id || null, 'test-token']
+          );
+          console.log(`Created test user: ${user.name} (ID: ${user.id})`);
+        } else {
+          // Update existing user
+          await pool.query(
+            `UPDATE users SET
+             name = $2,
+             email = $3,
+             recurse_id = $4
+             WHERE id = $1`,
+            [user.id, user.name, user.email, user.recurse_id || null]
+          );
+          console.log(`Updated test user: ${user.name} (ID: ${user.id})`);
+        }
+      }
+
+      // Commit transaction
+      await pool.query('COMMIT');
+
+      res.status(200).json({ success: true, message: `${users.length} test users configured` });
+    } catch (error) {
+      // Rollback on error
+      await pool.query('ROLLBACK').catch(() => { });
+      console.error('Error setting up test users:', error);
+      res.status(500).json({ error: 'Failed to set up test users', details: error.message });
+    }
+  });
+}
+
 // API route to handle OAuth token exchange
 app.post('/api/auth/callback', async (req, res) => {
   const { code } = req.body;

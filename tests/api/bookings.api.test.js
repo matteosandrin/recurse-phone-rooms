@@ -1,31 +1,6 @@
 import { test, expect } from '@playwright/test';
 import axios from 'axios';
-
-const API_BASE_URL = 'http://localhost:3000/api';
-
-// Test user data (matches our test storage state files)
-const USERS = {
-  ALICE: {
-    id: '1',
-    name: 'Alice Tester',
-    email: 'test@example.com'
-  },
-  BOB: {
-    id: '2',
-    name: 'Bob Reviewer',
-    email: 'other@example.com'
-  }
-};
-
-// Helper for making authenticated requests
-function authRequest(userId) {
-  return axios.create({
-    baseURL: API_BASE_URL,
-    headers: {
-      'X-User-Id': userId
-    }
-  });
-}
+import { API_BASE_URL, USERS, authRequest, setupTestUsers } from './test-setup.js';
 
 // We'll use these for test fixtures across tests
 let testRoomId = null;
@@ -34,14 +9,18 @@ let bobBookingId = null;
 
 test.describe('Booking API Tests', () => {
   // Setup: Make sure server is running before tests
+  // and ensure test users exist in the database
   test.beforeAll(async () => {
-    // Try to connect to the API
     try {
+      // Check if the server is running
       await axios.get(`${API_BASE_URL}/rooms`);
       console.log('Server is running and API is accessible');
+
+      // Set up test users
+      await setupTestUsers();
     } catch (error) {
-      console.error('ERROR: API server is not running. Please start it with "npm run server".');
-      throw new Error('API server must be running for these tests');
+      console.error('ERROR: API server is not running or setup failed');
+      throw new Error(`API server must be running for these tests: ${error.message}`);
     }
   });
 
@@ -78,7 +57,7 @@ test.describe('Booking API Tests', () => {
     }
   });
 
-  test('should get all rooms', async () => {
+  test('should get all rooms', async ({ page }) => {
     // Public endpoint, no auth needed
     const response = await axios.get(`${API_BASE_URL}/rooms`);
 
@@ -92,7 +71,7 @@ test.describe('Booking API Tests', () => {
     expect(room).toHaveProperty('name');
   });
 
-  test('should get all bookings', async () => {
+  test('should get all bookings', async ({ page }) => {
     // Public endpoint, but in a real app this would be authenticated
     const response = await axios.get(`${API_BASE_URL}/bookings`);
 
@@ -133,7 +112,7 @@ test.describe('Booking API Tests', () => {
 
       expect(response.status).toBe(201);
       expect(response.data).toHaveProperty('id');
-      expect(response.data.user_id).toBe(parseInt(USERS.ALICE.id));
+      expect(response.data.user_id).toBe(USERS.ALICE.id);
       expect(response.data.room_id).toBe(testRoomId);
 
       // Save the booking ID for cleanup later
