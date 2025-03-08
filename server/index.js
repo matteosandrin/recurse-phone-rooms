@@ -17,7 +17,7 @@ const __dirname = path.dirname(__filename);
 
 // Configure CORS to allow requests from our frontend
 app.use(cors({
-  origin: 'http://localhost:5173', // Vite development server
+  origin: ['http://localhost:5173', 'https://recurse-bookings-production.up.railway.app'],
   credentials: true
 }));
 
@@ -267,6 +267,11 @@ app.delete('/api/bookings/:id', canDeleteBooking, async (req, res) => {
     console.error('Error deleting booking:', error);
     res.status(500).json({ error: 'Failed to delete booking' });
   }
+});
+
+// Add a health check endpoint for Railway
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // All other routes should serve the frontend in production
