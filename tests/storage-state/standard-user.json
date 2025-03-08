@@ -1,0 +1,1 @@
+{"cookies":[], "origins": [{"origin": "http://localhost:5173", "localStorage": [{"name": "recurse_user", "value": "{\"id\":\"1\",\"email\":\"test@example.com\",\"name\":\"Test User\",\"recurseId\":12345,\"accessToken\":\"mock-token\"}"}]}]}
