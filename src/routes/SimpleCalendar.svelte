@@ -578,8 +578,20 @@
 
     // Get room color for display
     function getRoomColor(roomId: number): string {
+        // Find the room object by ID
+        const room = rooms.find((r) => r.id === roomId);
+        if (!room) return "#4f46e5"; // Default color if room not found
+
+        // Assign specific colors based on room name
+        if (room.name.toLowerCase().includes("green")) {
+            return "#16a34a"; // Green color for Green Phone Room
+        } else if (room.name.toLowerCase().includes("lovelace")) {
+            return "#bf0000"; // Gules (heraldic red) for Lovelace
+        }
+
+        // Fallback colors if needed
         const index = rooms.findIndex((r) => r.id === roomId);
-        const colors = ["#4f46e5", "#16a34a"]; // Indigo for first room, Green for second
+        const colors = ["#4f46e5", "#16a34a"];
         return colors[index % colors.length];
     }
 
@@ -773,38 +785,64 @@
         {:else}
             <div class="bg-gray-900 border border-gray-800 rounded-lg p-2">
                 <!-- Calendar Navigation -->
-                <div class="flex justify-center items-center relative mb-4">
-                    <!-- Left aligned navigation buttons -->
-                    <div class="absolute left-4 flex space-x-2">
-                        <button
-                            on:click={goToToday}
-                            class="px-4 py-2 bg-gray-800 text-white rounded-md hover:bg-gray-700"
-                        >
-                            Today
-                        </button>
-                        <button
-                            on:click={prevWeek}
-                            class="w-10 h-10 bg-gray-700 text-white rounded-md hover:bg-gray-600 flex items-center justify-center"
-                            aria-label="Previous Week"
-                        >
-                            ←
-                        </button>
-                        <button
-                            on:click={nextWeek}
-                            class="w-10 h-10 bg-gray-700 text-white rounded-md hover:bg-gray-600 flex items-center justify-center"
-                            aria-label="Next Week"
-                        >
-                            →
-                        </button>
-                    </div>
+                <div class="flex flex-col mb-4">
+                    <div class="flex justify-between items-center px-4">
+                        <!-- Left aligned navigation buttons -->
+                        <div class="flex space-x-2">
+                            <button
+                                on:click={goToToday}
+                                class="px-4 py-2 bg-gray-800 text-white rounded-md hover:bg-gray-700"
+                            >
+                                Today
+                            </button>
+                            <button
+                                on:click={prevWeek}
+                                class="w-10 h-10 bg-gray-700 text-white rounded-md hover:bg-gray-600 flex items-center justify-center"
+                                aria-label="Previous Week"
+                            >
+                                ←
+                            </button>
+                            <button
+                                on:click={nextWeek}
+                                class="w-10 h-10 bg-gray-700 text-white rounded-md hover:bg-gray-600 flex items-center justify-center"
+                                aria-label="Next Week"
+                            >
+                                →
+                            </button>
+                        </div>
 
-                    <!-- Centered month/year display -->
-                    <h2 class="text-xl font-medium text-white">
-                        {new Date(weekDays[0]).toLocaleDateString("en-US", {
-                            month: "long",
-                            year: "numeric",
-                        })}
-                    </h2>
+                        <!-- Centered month/year display -->
+                        <h2 class="text-xl font-medium text-white">
+                            {new Date(weekDays[0]).toLocaleDateString("en-US", {
+                                month: "long",
+                                year: "numeric",
+                            })}
+                        </h2>
+
+                        <!-- Room Legend - Positioned to the right -->
+                        <div class="flex items-center gap-3">
+                            {#each rooms as room}
+                                <div
+                                    class="booking-legend-item"
+                                    style="background-color: {getRoomColor(
+                                        room.id,
+                                    )};
+                                          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+                                          border: 1px solid rgba(255, 255, 255, 0.2);
+                                          border-radius: 4px;
+                                          padding: 2px 8px;
+                                          min-width: 100px;
+                                          text-align: center;"
+                                >
+                                    <span
+                                        class="text-white text-sm font-medium"
+                                        style="text-shadow: 0px 1px 2px rgba(0, 0, 0, 0.5);"
+                                        >{room.name}</span
+                                    >
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Calendar Grid - Global view with side-by-side concurrent events -->
@@ -906,7 +944,7 @@
                                                 style="
                                                     background-color: {getRoomColor(
                                                     booking.room_id,
-                                                )};
+                                                )} !important;
                                                     /* Calculate top position: only show if this is the actual start slot */
                                                     display: {isBookingStart(
                                                     booking,
@@ -1235,8 +1273,13 @@
                             </svg>
                         </div>
                         <div class="text-white">
-                            {rooms.find((r) => r.id === selectedBooking.room_id)
-                                ?.name || "Unknown Room"}
+                            {#if selectedBooking}
+                                {rooms.find(
+                                    (r) => r.id === selectedBooking.room_id,
+                                )?.name || "Unknown Room"}
+                            {:else}
+                                Unknown Room
+                            {/if}
                         </div>
 
                         <!-- Calendar Icon -->
@@ -1468,14 +1511,13 @@
         color: white;
         z-index: 10;
         overflow: hidden;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
         display: flex;
         flex-direction: column;
-        background-color: #4285f4; /* Google blue */
-        /* Fix height issue - ensure height is correct */
+        background-color: #4285f4; /* Default color if specific color not applied */
+        text-shadow: 0px 1px 2px rgba(0, 0, 0, 0.5); /* Add text shadow for better readability */
+        border: 1px solid rgba(255, 255, 255, 0.2); /* Add subtle border */
         box-sizing: border-box;
-        /* Ensure correct calculation for minutes to pixels */
-        /* 15px per 15 minutes = 1px per minute */
     }
 
     .booking-title {
@@ -1765,14 +1807,13 @@
         color: white;
         z-index: 10;
         overflow: hidden;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
         display: flex;
         flex-direction: column;
-        background-color: #4285f4; /* Google blue */
-        /* Fix height issue - ensure height is correct */
+        background-color: #4285f4; /* Default color if specific color not applied */
+        text-shadow: 0px 1px 2px rgba(0, 0, 0, 0.5); /* Add text shadow for better readability */
+        border: 1px solid rgba(255, 255, 255, 0.2); /* Add subtle border */
         box-sizing: border-box;
-        /* Ensure correct calculation for minutes to pixels */
-        /* 15px per 15 minutes = 1px per minute */
     }
 
     .booking-title {
