@@ -7,28 +7,38 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.node.json"
+    "check": "svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.node.json",
+    "migrate": "node migrations/run-migrations.js",
+    "server": "node server/index.js",
+    "dev:all": "concurrently \"npm run server\" \"npm run dev\""
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.1.2",
     "@tsconfig/svelte": "^5.0.4",
+    "@types/pg": "^8.11.11",
+    "autoprefixer": "^10.4.17",
+    "concurrently": "^8.2.2",
+    "postcss": "^8.4.35",
     "svelte": "^4.2.19",
     "svelte-check": "^3.8.6",
+    "tailwindcss": "^3.4.1",
+    "ts-node": "^10.9.2",
     "tslib": "^2.7.0",
     "typescript": "^5.5.3",
     "vite": "^5.4.2",
-    "autoprefixer": "^10.4.17",
-    "postcss": "^8.4.35",
-    "tailwindcss": "^3.4.1"
+    "vite-plugin-node-polyfills": "^0.23.0"
   },
   "dependencies": {
     "@event-calendar/core": "^2.6.1",
-    "@event-calendar/time-grid": "^2.6.1",
     "@event-calendar/day-grid": "^2.6.1",
     "@event-calendar/interaction": "^2.6.1",
     "@event-calendar/list": "^2.6.1",
+    "@event-calendar/time-grid": "^2.6.1",
+    "axios": "^1.6.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
     "pg": "^8.11.3",
-    "jsonwebtoken": "^9.0.2",
-    "bcryptjs": "^2.4.3"
+    "svelte-calendar": "^3.1.6"
   }
 }
