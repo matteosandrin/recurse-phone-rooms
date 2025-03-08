@@ -20,6 +20,7 @@ export interface Booking {
     updated_at: Date;
     room_name?: string;
     user_email?: string;
+    user_name?: string;
 }
 
 export class DatabaseError extends Error {
