@@ -43,6 +43,20 @@ export async function runMigration() {
     // Run the migration
     await client.query(sql);
 
+    // Clean up duplicate rooms if any exist
+    const cleanupSql = `
+      -- This query removes duplicate rooms keeping only the one with the lowest ID for each room name
+      WITH unique_rooms AS (
+        SELECT MIN(id) as id, name
+        FROM rooms
+        GROUP BY name
+      )
+      DELETE FROM rooms
+      WHERE id NOT IN (SELECT id FROM unique_rooms);
+    `;
+    await client.query(cleanupSql);
+    console.log('Room duplicates cleanup completed');
+
     // Commit the transaction
     await client.query('COMMIT');
 

@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- Create rooms table
 CREATE TABLE IF NOT EXISTS rooms (
   id SERIAL PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
+  name VARCHAR(255) NOT NULL UNIQUE,
   description TEXT,
   capacity INTEGER NOT NULL DEFAULT 1,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -63,4 +63,4 @@ INSERT INTO rooms (name, description, capacity)
 VALUES
   ('Green Phone Room', 'Small green phone booth for private calls', 1),
   ('Lovelace', 'Conference room named after Ada Lovelace', 4)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (name) DO NOTHING;
