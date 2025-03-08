@@ -27,6 +27,8 @@
     let selectedDate: Date | null = null;
     let selectedStartTime: string = "9:00";
     let selectedEndTime: string = "9:30";
+    let selectedDuration: string = "30"; // Default 30 minutes
+    let selectedRoomId: number | null = null;
     let bookingNotes = "";
     let showBookingForm = false;
     let bookingSuccess = false;
@@ -410,49 +412,62 @@
         showBookingForm = true;
     }
 
-    // Booking functions
-    function openBookingForm(room: Room | null, date: Date) {
-        selectedRoom = room;
+    // Open the booking form
+    function openBookingForm(date: Date) {
         selectedDate = date;
-        selectedStartTime = "9:00";
-        selectedEndTime = "9:30";
+        showBookingForm = true;
         bookingNotes = "";
         bookingSuccess = false;
         bookingError = null;
-        showBookingForm = true;
+        selectedDuration = "30"; // Default to 30 minutes
+        selectedRoomId = null; // Reset room selection
     }
 
+    // Close the booking form
     function closeBookingForm() {
         showBookingForm = false;
-        selectedRoom = null;
         selectedDate = null;
+        selectedRoom = null;
+        selectedRoomId = null;
     }
 
     async function handleBookingSubmit() {
-        if (!$user || !selectedRoom || !selectedDate) return;
+        if (!$user || !selectedDate || !selectedStartTime || !selectedRoomId) {
+            bookingError = "Please fill out all required fields";
+            return;
+        }
 
         try {
             isSubmitting = true;
             bookingError = null;
 
-            // Parse selected times
+            // Parse the start time
             const [startHour, startMinute] = selectedStartTime
                 .split(":")
                 .map(Number);
-            const [endHour, endMinute] = selectedEndTime.split(":").map(Number);
 
-            // Create Date objects
-            const startDate = new Date(selectedDate);
-            startDate.setHours(startHour, startMinute, 0, 0);
+            // Create Date objects for start time
+            const startTime = new Date(selectedDate);
+            startTime.setHours(startHour, startMinute, 0, 0);
 
-            const endDate = new Date(selectedDate);
-            endDate.setHours(endHour, endMinute, 0, 0);
+            // Calculate end time based on duration
+            const endTime = new Date(startTime);
+            endTime.setMinutes(
+                startTime.getMinutes() + parseInt(selectedDuration),
+            );
+
+            // Get the selected room
+            const room = rooms.find((r) => r.id === selectedRoomId);
+            if (!room) {
+                bookingError = "Invalid room selection";
+                return;
+            }
 
             // Check if time slot is available
             const isAvailable = await db.isTimeSlotAvailable(
-                selectedRoom.id,
-                startDate,
-                endDate,
+                selectedRoomId,
+                startTime,
+                endTime,
             );
 
             if (!isAvailable) {
@@ -464,28 +479,30 @@
             // Create the booking
             const booking = {
                 user_id: parseInt($user.id),
-                room_id: selectedRoom.id,
-                start_time: startDate,
-                end_time: endDate,
+                room_id: selectedRoomId,
+                start_time: startTime,
+                end_time: endTime,
                 notes: bookingNotes,
             };
 
             await db.createBooking(booking);
 
-            // Refresh data
+            // Refresh bookings data
             await loadData();
 
-            // Show success
+            // Show success message
             bookingSuccess = true;
 
-            // Close after delay
+            // Close the form after a delay
             setTimeout(() => {
                 closeBookingForm();
             }, 2000);
         } catch (err) {
             console.error("Booking error:", err);
             bookingError =
-                err instanceof Error ? err.message : "Failed to create booking";
+                err instanceof Error
+                    ? err.message
+                    : "Failed to create booking. Please try again.";
         } finally {
             isSubmitting = false;
         }
@@ -662,6 +679,32 @@
     function closeBookingDetails() {
         showBookingDetails = false;
         selectedBooking = null;
+    }
+
+    // Handle delete booking confirmation
+    async function confirmDeleteBooking() {
+        if (!selectedBooking || !$user) return;
+
+        try {
+            isSubmitting = true;
+
+            await db.deleteBooking(selectedBooking.id);
+
+            // Refresh data
+            await loadData();
+
+            closeBookingDetails();
+        } catch (err) {
+            console.error("Error deleting booking:", err);
+            // Handle error
+        } finally {
+            isSubmitting = false;
+        }
+    }
+
+    // Handle day cell click
+    function onDayClick(date: Date) {
+        openBookingForm(date);
     }
 </script>
 
@@ -925,7 +968,7 @@
         {/if}
     </div>
 
-    <!-- Booking Form Modal: Room selection -->
+    <!-- Booking Form Modal -->
     <div
         bind:this={bookingModalElement}
         class="booking-modal-overlay"
@@ -961,11 +1004,11 @@
                         Close
                     </button>
                 </div>
-            {:else if selectedRoom}
+            {:else}
                 <div
                     class="flex justify-between items-center border-b border-gray-700 pb-3 mb-4"
                 >
-                    <h3 class="text-lg font-medium text-white">Add event</h3>
+                    <h3 class="text-lg font-medium text-white">Book a Room</h3>
                     <button
                         on:click={closeBookingForm}
                         class="text-gray-400 hover:text-gray-300"
@@ -992,8 +1035,8 @@
                     on:submit|preventDefault={handleBookingSubmit}
                     class="space-y-4"
                 >
-                    <div class="grid grid-cols-[auto,1fr] gap-4 items-center">
-                        <!-- Calendar Icon -->
+                    <!-- Date Display -->
+                    <div class="flex items-center gap-2 mb-4">
                         <div class="text-gray-400">
                             <svg
                                 xmlns="http://www.w3.org/2000/svg"
@@ -1010,160 +1053,80 @@
                                 />
                             </svg>
                         </div>
-                        <!-- Date field -->
-                        <div>
-                            <input
-                                type="text"
-                                readonly
-                                value={selectedDate
-                                    ? formatDate(selectedDate)
-                                    : ""}
-                                class="w-full bg-transparent border-none focus:ring-0 p-0 text-white"
-                                aria-label="Meeting date"
-                            />
+                        <div class="text-white font-medium">
+                            {selectedDate ? formatDate(selectedDate) : ""}
                         </div>
+                    </div>
 
-                        <!-- Clock Icon -->
-                        <div class="text-gray-400">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                class="w-5 h-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                                />
-                            </svg>
-                        </div>
-                        <!-- Time fields -->
-                        <div class="flex items-center space-x-2">
-                            <select
-                                bind:value={selectedStartTime}
-                                class="w-24 bg-gray-700 border-none focus:ring-1 focus:ring-blue-500 p-1 text-white rounded"
-                                aria-label="Start time"
-                            >
-                                {#each hours as hour}
-                                    {#each [0, 15, 30, 45] as minute}
-                                        <option
-                                            value={`${hour}:${minute === 0 ? "00" : minute}`}
-                                        >
-                                            {formatTime(hour, minute)}
-                                        </option>
-                                    {/each}
+                    <!-- Time Selection -->
+                    <div class="mb-4">
+                        <label class="block text-gray-400 mb-2"
+                            >Start Time</label
+                        >
+                        <select
+                            bind:value={selectedStartTime}
+                            class="w-full bg-gray-700 border-none rounded-md focus:ring-1 focus:ring-blue-500 p-2 text-white"
+                        >
+                            {#each hours as hour}
+                                {#each [0, 15, 30, 45] as minute}
+                                    <option
+                                        value={`${hour}:${minute === 0 ? "00" : minute}`}
+                                    >
+                                        {formatTime(hour, minute)}
+                                    </option>
                                 {/each}
-                            </select>
+                            {/each}
+                        </select>
+                    </div>
 
-                            <span class="text-gray-400">-</span>
+                    <!-- Duration Selection -->
+                    <div class="mb-4">
+                        <label class="block text-gray-400 mb-2">Duration</label>
+                        <select
+                            bind:value={selectedDuration}
+                            class="w-full bg-gray-700 border-none rounded-md focus:ring-1 focus:ring-blue-500 p-2 text-white"
+                        >
+                            <option value="15">15 minutes</option>
+                            <option value="30">30 minutes</option>
+                            <option value="45">45 minutes</option>
+                            <option value="60">1 hour</option>
+                            <option value="90">1 hour 30 minutes</option>
+                            <option value="120">2 hours</option>
+                        </select>
+                    </div>
 
-                            <select
-                                bind:value={selectedEndTime}
-                                class="w-24 bg-gray-700 border-none focus:ring-1 focus:ring-blue-500 p-1 text-white rounded"
-                                aria-label="End time"
-                            >
-                                {#each hours as hour}
-                                    {#each [0, 15, 30, 45] as minute}
-                                        <option
-                                            value={`${hour}:${minute === 0 ? "00" : minute}`}
-                                        >
-                                            {formatTime(hour, minute)}
-                                        </option>
-                                    {/each}
-                                {/each}
-                            </select>
+                    <!-- Room Selection -->
+                    <div class="mb-4">
+                        <label class="block text-gray-400 mb-2"
+                            >Select Room</label
+                        >
+                        <div class="flex space-x-3">
+                            {#each rooms as room}
+                                <button
+                                    type="button"
+                                    on:click={() => (selectedRoomId = room.id)}
+                                    class="flex-1 py-3 px-4 text-center rounded-md transition-colors font-medium {selectedRoomId ===
+                                    room.id
+                                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                        : 'bg-gray-700 hover:bg-gray-600 text-white'}"
+                                >
+                                    {room.name}
+                                </button>
+                            {/each}
                         </div>
+                    </div>
 
-                        <!-- Duration display -->
-                        <div class="text-gray-400">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                class="w-5 h-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M12 8v4l2 2m-2-6v-.5a.5.5 0 00-1 0V8m5 0a6 6 0 11-12 0 6 6 0 0112 0z"
-                                />
-                            </svg>
-                        </div>
-
-                        <!-- Duration info field -->
-                        <div>
-                            <input
-                                type="text"
-                                readonly
-                                value={formatDuration(
-                                    selectedStartTime,
-                                    selectedEndTime,
-                                )}
-                                class="w-full bg-transparent border-none focus:ring-0 p-0 text-white"
-                                aria-label="Meeting duration"
-                            />
-                        </div>
-
-                        <!-- Room Icon -->
-                        <div class="text-gray-400">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                class="w-5 h-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                                />
-                            </svg>
-                        </div>
-                        <!-- Room info field -->
-                        <div>
-                            <input
-                                type="text"
-                                readonly
-                                value={selectedRoom.name}
-                                class="w-full bg-transparent border-none focus:ring-0 p-0 text-white"
-                                aria-label="Room"
-                            />
-                        </div>
-
-                        <!-- Notes Icon -->
-                        <div class="text-gray-400 self-start pt-2">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                class="w-5 h-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                />
-                            </svg>
-                        </div>
-                        <!-- Notes field -->
-                        <div>
-                            <textarea
-                                bind:value={bookingNotes}
-                                class="w-full bg-gray-700 border-none rounded p-2 text-white focus:ring-1 focus:ring-blue-500 resize-none"
-                                rows="3"
-                                placeholder="Add description"
-                                aria-label="Meeting description"
-                            ></textarea>
-                        </div>
+                    <!-- Notes field -->
+                    <div class="mb-4">
+                        <label class="block text-gray-400 mb-2"
+                            >Notes (optional)</label
+                        >
+                        <textarea
+                            bind:value={bookingNotes}
+                            class="w-full bg-gray-700 border-none rounded-md p-2 text-white focus:ring-1 focus:ring-blue-500 resize-none"
+                            rows="2"
+                            placeholder="Add description"
+                        ></textarea>
                     </div>
 
                     {#if bookingError}
@@ -1188,57 +1151,12 @@
                         <button
                             type="submit"
                             class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md shadow-sm"
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || !selectedRoomId}
                         >
-                            {isSubmitting ? "Saving..." : "Save"}
+                            {isSubmitting ? "Saving..." : "Book Room"}
                         </button>
                     </div>
                 </form>
-            {:else}
-                <!-- No room selected - show room selection form -->
-                <div
-                    class="flex justify-between items-center border-b border-gray-700 pb-3 mb-4"
-                >
-                    <h3 class="text-lg font-medium text-white">Add event</h3>
-                    <button
-                        on:click={closeBookingForm}
-                        class="text-gray-400 hover:text-gray-300"
-                        aria-label="Close"
-                    >
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="w-6 h-6"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M6 18L18 6M6 6l12 12"
-                            />
-                        </svg>
-                    </button>
-                </div>
-
-                <div class="space-y-4">
-                    <p class="text-white">Select a room to book:</p>
-                    <div class="grid gap-2">
-                        {#each rooms as room}
-                            <button
-                                on:click={() => (selectedRoom = room)}
-                                class="text-left p-3 bg-gray-700 hover:bg-gray-600 rounded-md text-white"
-                            >
-                                <div class="font-medium">{room.name}</div>
-                                <div class="text-sm text-gray-300">
-                                    Capacity: {room.capacity}
-                                    {room.capacity === 1 ? "person" : "people"}
-                                </div>
-                            </button>
-                        {/each}
-                    </div>
-                </div>
             {/if}
         </div>
     </div>
@@ -1394,11 +1312,11 @@
                     {#if $user && parseInt($user.id) === selectedBooking.user_id}
                         <div class="pt-4 border-t border-gray-700">
                             <button
-                                on:click={handleDeleteBooking}
+                                on:click={confirmDeleteBooking}
                                 class="w-full mt-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md shadow-sm"
-                                disabled={isDeletingBooking}
+                                disabled={isSubmitting}
                             >
-                                {isDeletingBooking
+                                {isSubmitting
                                     ? "Deleting..."
                                     : "Delete Booking"}
                             </button>
