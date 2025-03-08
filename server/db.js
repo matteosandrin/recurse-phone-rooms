@@ -12,6 +12,10 @@ const pool = new pg.Pool({
   password: process.env.VITE_DB_PASSWORD,
   port: parseInt(process.env.VITE_DB_PORT || '5432'),
   ssl: process.env.VITE_DB_SSL === 'true'
+    ? true
+    : (process.env.VITE_DB_SSL === 'no-verify'
+      ? { rejectUnauthorized: false }
+      : false)
 });
 
 // Log when the pool is created for debugging
