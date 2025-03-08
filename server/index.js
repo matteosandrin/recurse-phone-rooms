@@ -55,6 +55,11 @@ pool.query('SELECT NOW()', (err, res) => {
 // Serve static files from the dist directory in production
 app.use(express.static(path.join(__dirname, '../dist')));
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // API route to handle OAuth token exchange
 app.post('/api/auth/callback', async (req, res) => {
   const { code } = req.body;
