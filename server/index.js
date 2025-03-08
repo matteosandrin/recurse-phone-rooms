@@ -7,6 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from './db.js';
 import { authenticate, canDeleteBooking } from './auth-middleware.js';
+import { runMigration } from '../migrations/run-migrations.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -278,6 +279,18 @@ app.get('/api/health', (req, res) => {
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
+
+// Add after app initialization but before starting the server
+// Run migrations on startup (only in non-production environment or first deploy)
+if (process.env.RAILWAY_ENVIRONMENT === 'production') {
+  console.log('Attempting to run migrations...');
+  try {
+    await runMigration();
+    console.log('Migrations completed successfully');
+  } catch (err) {
+    console.error('Error running migrations:', err.message);
+  }
+}
 
 // Start server
 app.listen(PORT, () => {
