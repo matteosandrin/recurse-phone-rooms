@@ -1,4 +1,5 @@
 // This file provides a browser-compatible API for database operations via our backend API
+import { API_BASE_URL, BOOKINGS_URL, ROOMS_URL } from './apiConfig';
 
 export interface Room {
     id: number;
@@ -30,14 +31,11 @@ export class DatabaseError extends Error {
     }
 }
 
-// API base URL
-const API_BASE = 'http://localhost:3000/api';
-
 export const db = {
     // Get all rooms
     async getRooms(): Promise<Room[]> {
         try {
-            const response = await fetch(`${API_BASE}/rooms`);
+            const response = await fetch(ROOMS_URL);
 
             if (!response.ok) {
                 const error = await response.json();
@@ -54,7 +52,7 @@ export const db = {
     // Get bookings for calendar view
     async getBookings(): Promise<Booking[]> {
         try {
-            const response = await fetch(`${API_BASE}/bookings`);
+            const response = await fetch(BOOKINGS_URL);
 
             if (!response.ok) {
                 const error = await response.json();
@@ -71,7 +69,7 @@ export const db = {
     // Get bookings for a specific user
     async getUserBookings(userId: number): Promise<Booking[]> {
         try {
-            const response = await fetch(`${API_BASE}/bookings?user_id=${userId}`);
+            const response = await fetch(`${BOOKINGS_URL}?user_id=${userId}`);
 
             if (!response.ok) {
                 const error = await response.json();
@@ -88,7 +86,7 @@ export const db = {
     // Create a new booking
     async createBooking(booking: Omit<Booking, 'id' | 'created_at' | 'updated_at'>): Promise<Booking> {
         try {
-            const response = await fetch(`${API_BASE}/bookings`, {
+            const response = await fetch(BOOKINGS_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -111,7 +109,7 @@ export const db = {
     // Delete a booking
     async deleteBooking(id: number): Promise<void> {
         try {
-            const response = await fetch(`${API_BASE}/bookings/${id}`, {
+            const response = await fetch(`${BOOKINGS_URL}/${id}`, {
                 method: 'DELETE',
             });
 
@@ -129,7 +127,7 @@ export const db = {
     async isTimeSlotAvailable(roomId: number, startTime: Date, endTime: Date): Promise<boolean> {
         try {
             const response = await fetch(
-                `${API_BASE}/bookings/check-availability?room_id=${roomId}&start_time=${startTime.toISOString()}&end_time=${endTime.toISOString()}`
+                `${BOOKINGS_URL}/check-availability?room_id=${roomId}&start_time=${startTime.toISOString()}&end_time=${endTime.toISOString()}`
             );
 
             if (!response.ok) {
