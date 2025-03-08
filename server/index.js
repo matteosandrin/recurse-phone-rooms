@@ -256,6 +256,14 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
+// Catch-all route to handle frontend routing
+// This must be AFTER all API routes
+app.get('*', (req, res) => {
+  // For any request that doesn't match an API route, send the main index.html
+  // This allows the client-side router to handle the route
+  res.sendFile(path.join(__dirname, '../dist/index.html'));
+});
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
