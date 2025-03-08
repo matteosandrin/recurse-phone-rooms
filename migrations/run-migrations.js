@@ -29,44 +29,45 @@ const pool = new Pool({
 });
 
 export async function runMigration() {
-  // Get the migration file
-  const sqlFile = path.join(__dirname, 'init.sql');
-  const sql = await fs.promises.readFile(sqlFile, 'utf8');
-
   // Get a client from the pool
   const client = await pool.connect();
 
   try {
-    // Start a transaction
-    await client.query('BEGIN');
+    // Get all SQL migration files in alphabetical order
+    const migrationsDir = __dirname;
+    const files = await fs.promises.readdir(migrationsDir);
+    const sqlFiles = files
+      .filter(file => file.endsWith('.sql'))
+      .sort(); // Sort alphabetically to ensure correct order
 
-    // Run the migration
-    await client.query(sql);
+    console.log(`Found ${sqlFiles.length} migration files to run:`, sqlFiles);
 
-    // Clean up duplicate rooms if any exist
-    const cleanupSql = `
-      -- This query removes duplicate rooms keeping only the one with the lowest ID for each room name
-      WITH unique_rooms AS (
-        SELECT MIN(id) as id, name
-        FROM rooms
-        GROUP BY name
-      )
-      DELETE FROM rooms
-      WHERE id NOT IN (SELECT id FROM unique_rooms);
-    `;
-    await client.query(cleanupSql);
-    console.log('Room duplicates cleanup completed');
+    // Run each migration file in order, with its own transaction
+    for (const file of sqlFiles) {
+      console.log(`Running migration: ${file}`);
+      const sqlPath = path.join(migrationsDir, file);
+      const sql = await fs.promises.readFile(sqlPath, 'utf8');
 
-    // Commit the transaction
-    await client.query('COMMIT');
+      try {
+        // Start a transaction for this migration
+        await client.query('BEGIN');
 
-    console.log('Migration completed successfully');
+        // Run the migration
+        await client.query(sql);
+
+        // Commit the transaction
+        await client.query('COMMIT');
+        console.log(`Migration ${file} completed successfully`);
+      } catch (error) {
+        // Rollback this migration's transaction on error
+        await client.query('ROLLBACK');
+        console.error(`Migration ${file} failed:`, error);
+        throw error;
+      }
+    }
+
+    console.log('All migrations completed successfully');
     return true;
-  } catch (error) {
-    // Rollback on error
-    await client.query('ROLLBACK');
-    console.error('Migration failed:', error);
-    throw error;
   } finally {
     // Release the client back to the pool
     client.release();
