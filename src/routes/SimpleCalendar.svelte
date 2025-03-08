@@ -183,9 +183,24 @@
         window.addEventListener("mouseup", handleMouseUp);
         window.addEventListener("mousemove", handleMouseMove);
 
+        // Add keyboard event listener for Escape key to close modals
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                if (showBookingForm) {
+                    closeBookingForm();
+                }
+                if (showBookingDetails) {
+                    closeBookingDetails();
+                }
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+
         return () => {
             window.removeEventListener("mouseup", handleMouseUp);
             window.removeEventListener("mousemove", handleMouseMove);
+            window.removeEventListener("keydown", handleKeyDown);
         };
     });
 
@@ -977,6 +992,28 @@
             : "display: none;"}
     >
         <div class="booking-modal-content">
+            <!-- Close button at top right -->
+            <button
+                on:click={closeBookingForm}
+                class="modal-close-btn"
+                aria-label="Close"
+            >
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="w-6 h-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                >
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12"
+                    />
+                </svg>
+            </button>
+
             {#if bookingSuccess}
                 <div class="text-center py-6">
                     <svg
@@ -1005,30 +1042,10 @@
                     </button>
                 </div>
             {:else}
-                <div
-                    class="flex justify-between items-center border-b border-gray-700 pb-3 mb-4"
-                >
-                    <h3 class="text-lg font-medium text-white">Book a Room</h3>
-                    <button
-                        on:click={closeBookingForm}
-                        class="text-gray-400 hover:text-gray-300"
-                        aria-label="Close"
-                    >
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="w-6 h-6"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M6 18L18 6M6 6l12 12"
-                            />
-                        </svg>
-                    </button>
+                <div class="pt-8 mb-4">
+                    <h3 class="text-xl font-medium text-white text-center">
+                        Book a Room
+                    </h3>
                 </div>
 
                 <form
@@ -1169,30 +1186,32 @@
             : "display: none;"}
     >
         <div class="booking-modal-content">
-            <div
-                class="flex justify-between items-center border-b border-gray-700 pb-3 mb-4"
+            <!-- Close button at top right -->
+            <button
+                on:click={closeBookingDetails}
+                class="modal-close-btn"
+                aria-label="Close"
             >
-                <h3 class="text-lg font-medium text-white">Booking Details</h3>
-                <button
-                    on:click={closeBookingDetails}
-                    class="text-gray-400 hover:text-gray-300"
-                    aria-label="Close"
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="w-6 h-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
                 >
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="w-6 h-6"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                    >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M6 18L18 6M6 6l12 12"
-                        />
-                    </svg>
-                </button>
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12"
+                    />
+                </svg>
+            </button>
+
+            <div class="pt-8 mb-4">
+                <h3 class="text-xl font-medium text-white text-center">
+                    Booking Details
+                </h3>
             </div>
 
             {#if selectedBooking}
@@ -1836,5 +1855,42 @@
         background-color: #444; /* Same color as the hour-start border */
         pointer-events: none; /* Don't interfere with clicks */
         z-index: 2; /* Above cells but below events */
+    }
+
+    /* Add the modal close button styling */
+    .modal-close-btn {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #9ca3af; /* gray-400 */
+        transition: color 0.2s;
+        z-index: 10;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+    }
+
+    .modal-close-btn:hover {
+        color: #d1d5db; /* gray-300 */
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Make sure the modal content has position relative for proper absolute positioning */
+    .booking-modal-content {
+        position: relative;
+        background-color: #2d3748;
+        border-radius: 8px;
+        padding: 16px;
+        width: 400px;
+        max-width: 90vw;
+        max-height: 90vh;
+        overflow-y: auto;
+        color: white;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
     }
 </style>
