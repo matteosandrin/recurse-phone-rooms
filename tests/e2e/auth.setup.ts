@@ -8,14 +8,14 @@ const mockUsers = {
     standard: {
         id: '1',
         email: 'test@example.com',
-        name: 'Test User',
+        name: 'Alice Tester',
         recurseId: 12345,
         accessToken: 'mock-token',
     },
     other: {
         id: '2',
         email: 'other@example.com',
-        name: 'Other User',
+        name: 'Bob Reviewer',
         recurseId: 67890,
         accessToken: 'other-mock-token',
     }
@@ -26,15 +26,29 @@ setup('authenticate as standard user', async ({ page }) => {
     // Go to the application
     await page.goto('/');
 
+    // Wait for the page to be fully loaded
+    await page.waitForLoadState('networkidle');
+
     // Set the user in localStorage to simulate a successful login
     await page.evaluate((user) => {
         localStorage.setItem('recurse_user', JSON.stringify(user));
+
+        // Let's just use localStorage for simplicity
+        // Svelte stores are not directly accessible here
+
         // Force a reload to apply the user data
         window.location.href = '/';
     }, mockUsers.standard);
 
     // Wait for the page to reload and calendar to display
-    await page.waitForSelector('.calendar-grid');
+    // Use a specific selector that should be present on the calendar page
+    try {
+        await page.waitForSelector('div.calendar-grid', { state: 'visible', timeout: 10000 });
+    } catch (e) {
+        // If we can't find the calendar grid, take a screenshot for debugging
+        await page.screenshot({ path: './tests/debug-auth-standard.png' });
+        throw new Error(`Failed to authenticate as standard user: ${e.message}`);
+    }
 
     // Save the authenticated state for future use in tests
     await page.context().storageState({ path: './tests/storage-state/standard-user.json' });
@@ -45,15 +59,28 @@ setup('authenticate as other user', async ({ page }) => {
     // Go to the application
     await page.goto('/');
 
+    // Wait for the page to be fully loaded
+    await page.waitForLoadState('networkidle');
+
     // Set the user in localStorage to simulate a successful login
     await page.evaluate((user) => {
         localStorage.setItem('recurse_user', JSON.stringify(user));
+
+        // Let's just use localStorage for simplicity
+        // Svelte stores are not directly accessible here
+
         // Force a reload to apply the user data
         window.location.href = '/';
     }, mockUsers.other);
 
     // Wait for the page to reload and calendar to display
-    await page.waitForSelector('.calendar-grid');
+    try {
+        await page.waitForSelector('div.calendar-grid', { state: 'visible', timeout: 10000 });
+    } catch (e) {
+        // If we can't find the calendar grid, take a screenshot for debugging
+        await page.screenshot({ path: './tests/debug-auth-other.png' });
+        throw new Error(`Failed to authenticate as other user: ${e.message}`);
+    }
 
     // Save the authenticated state for future use in tests
     await page.context().storageState({ path: './tests/storage-state/other-user.json' });
