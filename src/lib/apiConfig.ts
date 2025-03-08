@@ -3,9 +3,12 @@
 // Determine if we're in production by checking the host
 const isProduction = window.location.hostname !== 'localhost';
 
+// Get the current hostname
+const currentHostname = window.location.hostname;
+
 // Base API URL based on environment
 export const API_BASE_URL = isProduction
-    ? 'https://recurse-bookings-production.up.railway.app/api'
+    ? `https://${currentHostname}/api` // Use current hostname dynamically
     : 'http://localhost:3000/api';
 
 // Auth endpoints

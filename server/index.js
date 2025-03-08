@@ -19,7 +19,8 @@ const __dirname = path.dirname(__filename);
 app.use(cors({
   origin: [
     'http://localhost:5173',
-    'https://recurse-bookings-production.up.railway.app'
+    'https://recurse-bookings-production.up.railway.app',
+    'https://phoneroom.recurse.com'
   ],
   credentials: true
 }));
