@@ -201,8 +201,36 @@ app.get('/api/bookings/check-availability', async (req, res) => {
 
     res.json({ available: parseInt(result.rows[0].count) === 0 });
   } catch (error) {
-    console.error('Error checking availability:', error);
-    res.status(500).json({ error: 'Failed to check availability' });
+    console.error('Error checking booking availability:', error);
+    res.status(500).json({ error: 'Failed to check booking availability' });
+  }
+});
+
+// API route to delete a booking
+app.delete('/api/bookings/:id', async (req, res) => {
+  const bookingId = req.params.id;
+
+  try {
+    // First check if the booking exists
+    const checkResult = await pool.query(
+      'SELECT * FROM bookings WHERE id = $1',
+      [bookingId]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    // Delete the booking
+    await pool.query(
+      'DELETE FROM bookings WHERE id = $1',
+      [bookingId]
+    );
+
+    res.status(200).json({ success: true, message: 'Booking deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting booking:', error);
+    res.status(500).json({ error: 'Failed to delete booking' });
   }
 });
 
