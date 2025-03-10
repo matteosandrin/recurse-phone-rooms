@@ -215,8 +215,21 @@ test.describe('Booking API Tests', () => {
 
       expect(createResponse.status).toBe(201);
       bookingId = createResponse.data.id;
+      console.log(`Created booking ID ${bookingId} for deletion test`);
     } catch (error) {
       console.error('Error creating booking to delete:', error.response?.data || error.message);
+      throw error;
+    }
+
+    // Verify the booking exists before deleting
+    try {
+      const bookingsResponse = await aliceClient.get(`/bookings`);
+      expect(bookingsResponse.status).toBe(200);
+
+      const bookingExists = bookingsResponse.data.some(b => b.id === bookingId);
+      expect(bookingExists).toBe(true, `Booking with ID ${bookingId} should exist before deletion`);
+    } catch (error) {
+      console.error('Error verifying booking exists:', error.response?.data || error.message);
       throw error;
     }
 
@@ -224,7 +237,19 @@ test.describe('Booking API Tests', () => {
     const deleteResponse = await aliceClient.delete(`/bookings/${bookingId}`);
 
     expect(deleteResponse.status).toBe(200);
-    expect(deleteResponse.data.success).toBe(true);
+    expect(deleteResponse.data.message).toBe('Booking deleted successfully');
+
+    // Verify the booking no longer exists after deletion
+    try {
+      const bookingsResponse = await aliceClient.get(`/bookings`);
+      expect(bookingsResponse.status).toBe(200);
+
+      const bookingStillExists = bookingsResponse.data.some(b => b.id === bookingId);
+      expect(bookingStillExists).toBe(false, `Booking with ID ${bookingId} should not exist after deletion`);
+    } catch (error) {
+      console.error('Error verifying booking was deleted:', error.response?.data || error.message);
+      throw error;
+    }
   });
 
   test('should not allow users to delete bookings that don\'t exist', async ({ page }) => {

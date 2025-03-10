@@ -2,7 +2,9 @@
 
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:3000/api';
+// Get the API port from the environment or use the default
+const API_PORT = process.env.PORT || 3000;
+const API_BASE_URL = `http://localhost:${API_PORT}/api`;
 
 // Test user data
 export const USERS = {
@@ -50,14 +52,33 @@ export async function setupTestUsers() {
 
 /**
  * Helper for making authenticated requests
+ * Uses cookie-based authentication by first logging in the user
  */
-export function authRequest(userId) {
-  return axios.create({
+export async function authRequest(userId) {
+  // Create an Axios instance that maintains cookies across requests
+  const instance = axios.create({
     baseURL: API_BASE_URL,
-    headers: {
-      'X-User-Id': userId
-    }
+    withCredentials: true
   });
+
+  // Find the user data
+  const user = Object.values(USERS).find(user => user.id === userId);
+  if (!user) {
+    throw new Error(`User with ID ${userId} not found in test users`);
+  }
+
+  // Log the user in to get the auth cookie
+  try {
+    await instance.post('/auth/test-login', {
+      email: user.email,
+      // No password needed for test login
+    });
+
+    return instance;
+  } catch (error) {
+    console.error(`Error logging in test user ${user.email}:`, error.message);
+    throw error;
+  }
 }
 
 // Export the API base URL
