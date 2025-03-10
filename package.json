@@ -10,10 +10,18 @@
     "check": "svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.node.json",
     "migrate": "node migrations/run-migrations.js",
     "server": "node server/index.js",
+    "server:test": "node server/index-test.js",
     "dev:all": "concurrently \"npm run server\" \"npm run dev\"",
-    "test": "playwright test",
-    "test:ui": "playwright test --ui",
-    "test:headed": "playwright test --headed"
+    "test": "NODE_ENV=test playwright test",
+    "test:api": "NODE_ENV=test concurrently --kill-others --success first \"npm run server:test\" \"wait-on http://localhost:3000/api/health && NODE_ENV=test playwright test tests/api/\"",
+    "test:with-server": "NODE_ENV=test concurrently --kill-others --success first \"npm run server:test\" \"wait-on http://localhost:3000/api/health && NODE_ENV=test playwright test\"",
+    "test:ui": "NODE_ENV=test playwright test --ui",
+    "test:headed": "NODE_ENV=test playwright test --headed",
+    "test:pre-release": "NODE_ENV=test playwright test",
+    "setup:test-db": "NODE_ENV=test node scripts/setup-test-db.js",
+    "setup:pg-service": "bash scripts/setup-pg-service.sh",
+    "prepare": "husky install",
+    "oauth:test": "node scripts/oauth-dev-helper.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.42.0",
@@ -22,6 +30,7 @@
     "@types/pg": "^8.11.11",
     "autoprefixer": "^10.4.17",
     "concurrently": "^8.2.2",
+    "husky": "^9.1.7",
     "postcss": "^8.4.35",
     "svelte": "^4.2.19",
     "svelte-check": "^3.8.6",
@@ -30,7 +39,8 @@
     "tslib": "^2.7.0",
     "typescript": "^5.5.3",
     "vite": "^5.4.2",
-    "vite-plugin-node-polyfills": "^0.23.0"
+    "vite-plugin-node-polyfills": "^0.23.0",
+    "wait-on": "^8.0.2"
   },
   "dependencies": {
     "@event-calendar/core": "^2.6.1",
@@ -39,6 +49,7 @@
     "@event-calendar/list": "^2.6.1",
     "@event-calendar/time-grid": "^2.6.1",
     "axios": "^1.6.7",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.18.2",
