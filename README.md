@@ -66,19 +66,32 @@ VITE_RECURSE_CLIENT_SECRET=your_recurse_client_secret
 VITE_OAUTH_REDIRECT_URI=http://localhost:5173/oauth/callback
 ```
 
-5. Run the database migrations:
+5. Set up PostgreSQL service configuration (optional but recommended):
+
+```bash
+npm run setup:pg-service
+```
+
+This creates a configuration file that simplifies database connections across different environments (local development, testing, and production). The script will:
+   - Create a ~/.pg_service.conf file from the template
+   - Test connections to the local and test databases
+   - Provide guidance for setting up production credentials
+
+For more information about the PostgreSQL service configuration, see [docs/database-services.md](docs/database-services.md).
+
+6. Run the database migrations:
 
 ```bash
 npm run migrate
 ```
 
-6. Start the development server:
+7. Start the development server:
 
 ```bash
 npm run dev:all
 ```
 
-7. Open http://localhost:5173 in your browser
+8. Open http://localhost:5173 in your browser
 
 ## Project Structure
 
