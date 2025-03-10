@@ -2,6 +2,7 @@
 
 import { writable } from 'svelte/store';
 import { db } from './db';
+import { OAUTH_REDIRECT_URI } from './apiConfig';
 
 // Define user type
 export interface User {
@@ -29,6 +30,8 @@ if (userJson) {
 export function initiateOAuthLogin() {
   const clientId = import.meta.env.VITE_RECURSE_CLIENT_ID;
   const redirectUri = encodeURIComponent(import.meta.env.VITE_OAUTH_REDIRECT_URI);
+
+  console.log('OAuth login initiated with redirect URI:', import.meta.env.VITE_OAUTH_REDIRECT_URI);
 
   // According to Recurse API docs, no scope parameter is needed
   window.location.href = `https://www.recurse.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code`;

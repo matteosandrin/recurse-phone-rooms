@@ -6,12 +6,20 @@
   let error = "";
   let loading = true;
   let tokenError = false;
+  let debugInfo = {
+    code: null as string | null,
+    callbackUrl: AUTH_CALLBACK_URL,
+  };
 
   onMount(async () => {
     try {
       // Get the authorization code from URL
       const urlParams = new URLSearchParams(window.location.search);
       const code = urlParams.get("code");
+
+      debugInfo.code = code ? code.substring(0, 5) + "..." : null;
+      console.log("OAuth callback handling. Code:", debugInfo.code);
+      console.log("Callback URL:", AUTH_CALLBACK_URL);
 
       if (!code) {
         error = "No authorization code found in the URL.";
@@ -37,6 +45,7 @@
       localStorage.setItem("usedAuthCodes", JSON.stringify(codeArray));
 
       // Use our backend server to exchange the code for a token
+      console.log("Sending code to backend:", code.substring(0, 5) + "...");
       const response = await fetch(AUTH_CALLBACK_URL, {
         method: "POST",
         headers: {
@@ -65,6 +74,7 @@
 
       // Process the user data response
       const userData = await response.json();
+      console.log("Successfully authenticated with Recurse Center");
 
       // Store the user data in localStorage and update the user store
       localStorage.setItem("recurse_user", JSON.stringify(userData));
@@ -95,6 +105,10 @@
             class="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"
           ></div>
         </div>
+        <p class="text-sm text-gray-500 mt-4">
+          If this takes more than a few seconds, there might be an issue with
+          the authentication process.
+        </p>
       </div>
     {:else if error}
       <div class="text-center">
@@ -124,6 +138,14 @@
             >
               Try Again
             </button>
+          </div>
+        {/if}
+
+        <!-- Debug information for development -->
+        {#if import.meta.env.DEV}
+          <div class="mt-6 p-4 bg-gray-100 rounded text-xs text-left">
+            <h3 class="font-semibold mb-1">Debug Info:</h3>
+            <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
           </div>
         {/if}
       </div>
