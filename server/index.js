@@ -181,13 +181,25 @@ app.get('/api/rooms', async (req, res) => {
 // API route to get bookings
 app.get('/api/bookings', async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT b.*, r.name as room_name, u.email as user_email
+    const { user_id } = req.query;
+
+    let query = `
+      SELECT b.*, r.name as room_name, u.email as user_email, u.name as user_name
       FROM bookings b
       JOIN rooms r ON b.room_id = r.id
       JOIN users u ON b.user_id = u.id
-      ORDER BY b.start_time
-    `);
+    `;
+
+    const params = [];
+
+    if (user_id) {
+      query += ` WHERE b.user_id = $1`;
+      params.push(user_id);
+    }
+
+    query += ` ORDER BY b.start_time`;
+
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching bookings:', error);
