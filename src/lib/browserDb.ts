@@ -109,8 +109,19 @@ export const db = {
     // Delete a booking
     async deleteBooking(id: number): Promise<void> {
         try {
+            // Get current user
+            const userStr = localStorage.getItem('recurse_user');
+            if (!userStr) {
+                throw new DatabaseError('Not authenticated');
+            }
+
+            const user = JSON.parse(userStr);
+
             const response = await fetch(`${BOOKINGS_URL}/${id}`, {
                 method: 'DELETE',
+                headers: {
+                    'X-User-ID': user.id.toString()
+                }
             });
 
             if (!response.ok) {

@@ -3,6 +3,7 @@
   import Login from "./routes/Login.svelte";
   import SimpleCalendar from "./routes/SimpleCalendar.svelte";
   import OAuthCallback from "./routes/OAuthCallback.svelte";
+  import { onMount } from "svelte";
 
   // Simple routing
   let path = window.location.pathname;
@@ -10,6 +11,24 @@
   // Listen for path changes
   window.addEventListener("popstate", () => {
     path = window.location.pathname;
+  });
+
+  // Special handling for OAuth callback when using the OAuth flow
+  onMount(() => {
+    // Check if we were redirected from OAuth with code parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get("code");
+
+    if (code) {
+      console.log("OAuth callback detected with code parameter");
+      // If we have a code parameter in the URL, make sure we're on the callback route
+      if (path === "/oauth/callback") {
+        console.log("Already on the OAuth callback route");
+      } else {
+        console.log("Setting path to OAuth callback route");
+        path = "/oauth/callback";
+      }
+    }
   });
 </script>
 
