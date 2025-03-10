@@ -12,13 +12,7 @@ export default defineConfig({
         trace: 'on-first-retry',
         video: 'on-first-retry',
     },
-    // Run the dev server before executing tests
-    webServer: {
-        command: 'npm run dev:all',
-        url: 'http://localhost:5173',
-        reuseExistingServer: !process.env.CI,
-        timeout: 120000, // Increase timeout to 2 minutes for server startup
-    },
+    // Note: Server startup is now handled in package.json scripts
     projects: [
         {
             name: 'chromium',
