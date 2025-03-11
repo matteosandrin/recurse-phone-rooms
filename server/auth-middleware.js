@@ -1,7 +1,7 @@
 // Authentication Middleware for the Booking API
 // This provides a production-like authentication flow for both environments
 
-import pool from './db.js';
+import db from './db.js';
 
 // Function to get the user from the request
 async function getUserFromRequest(req) {
@@ -14,7 +14,7 @@ async function getUserFromRequest(req) {
 
   try {
     // Find the user with this token
-    const result = await pool.query(
+    const result = await db.query(
       'SELECT * FROM users WHERE access_token = $1',
       [token]
     );
@@ -46,7 +46,7 @@ export async function canDeleteBooking(req, res, next) {
 
   try {
     // Check if the booking exists and belongs to the user
-    const result = await pool.query(
+    const result = await db.query(
       'SELECT * FROM bookings WHERE id = $1',
       [bookingId]
     );
@@ -101,7 +101,7 @@ export async function testLogin(req, res) {
 
   try {
     // Find the user with this email
-    const result = await pool.query(
+    const result = await db.query(
       'SELECT * FROM users WHERE email = $1',
       [email]
     );
