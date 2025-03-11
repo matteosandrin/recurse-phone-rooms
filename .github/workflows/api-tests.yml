@@ -1,4 +1,5 @@
 name: API Tests
+# Adding this comment to force a new workflow run
 
 on:
   push:
@@ -42,8 +43,8 @@ jobs:
 
       - name: Set up environment
         run: |
-          # Create test database
-          PGPASSWORD=password psql -h localhost -U admin -c 'CREATE DATABASE recurse_bookings_test;'
+          # Create test database - explicitly connect to postgres database
+          PGPASSWORD=password psql -h localhost -U admin -d postgres -c 'CREATE DATABASE recurse_bookings_test;'
 
           # Create .env.test file with the same credentials as local test environment
           cat > .env.test << EOF
