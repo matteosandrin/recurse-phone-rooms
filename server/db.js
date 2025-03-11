@@ -1,3 +1,12 @@
+/**
+ * Database Configuration
+ *
+ * This module provides a PostgreSQL client that works for all environments:
+ * - Development: Uses local database
+ * - Test: Uses test database
+ * - Production: Uses production database with SSL
+ */
+
 import pg from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -9,7 +18,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load environment variables based on NODE_ENV
-console.log(`Current NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`Current NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+
 if (process.env.NODE_ENV === 'test') {
   console.log('Loading test environment variables from .env.test');
   dotenv.config({ path: path.resolve(__dirname, '..', '.env.test') });
@@ -39,12 +49,25 @@ function getDatabaseService() {
   }
 }
 
-// Create a wrapper around pg.Client that mimics the pool interface
+// Get the database name based on environment
+function getDatabaseName() {
+  if (process.env.NODE_ENV === 'test') {
+    return process.env.VITE_DB_NAME || 'recurse_bookings_test';
+  } else {
+    return process.env.VITE_DB_NAME || 'recurse_bookings';
+  }
+}
+
+// Check if we should use a Pool or Client
+const usePool = process.env.NODE_ENV === 'test';
+
+// Create a wrapper around pg.Client/Pool that provides a consistent interface
 export class DbClient {
   constructor() {
     this.client = null;
     this.connected = false;
     this.service = getDatabaseService();
+    this.isTestEnv = process.env.NODE_ENV === 'test';
     console.log(`Using database service: ${this.service}`);
   }
 
@@ -52,19 +75,38 @@ export class DbClient {
     if (this.connected) return;
 
     try {
-      // Create a new client using the pg_service.conf service definition
-      this.client = new pg.Client({
-        service: this.service
-      });
-
-      // If we're using the 'prod' service and have a PGPASSWORD environment variable,
-      // override the password to avoid storing it in the service file
-      if (this.service === 'prod' && process.env.PGPASSWORD) {
-        this.client.password = process.env.PGPASSWORD;
+      // Set PGSERVICEFILE environment variable to look for pg_service.conf in the project directory
+      const pgServicePath = path.resolve(__dirname, '..', 'pg_service.conf');
+      if (fs.existsSync(pgServicePath)) {
+        process.env.PGSERVICEFILE = pgServicePath;
+        console.log(`Using project pg_service.conf: ${pgServicePath}`);
       }
 
-      // Connect to the database
-      await this.client.connect();
+      // Service configuration with explicit database name
+      const databaseName = getDatabaseName();
+      const serviceConfig = {
+        service: this.service,
+        database: databaseName // Prevent defaulting to OS username
+      };
+
+      console.log(`Connecting to service '${this.service}' with database: ${databaseName}`);
+
+      // Use Pool for test environment and Client for development/production
+      if (usePool) {
+        this.client = new pg.Pool(serviceConfig);
+      } else {
+        this.client = new pg.Client(serviceConfig);
+
+        // If we're using the 'prod' service and have a PGPASSWORD environment variable,
+        // override the password to avoid storing it in the service file
+        if (this.service === 'prod' && process.env.PGPASSWORD) {
+          this.client.password = process.env.PGPASSWORD;
+        }
+
+        // For Client, we need to explicitly connect
+        await this.client.connect();
+      }
+
       this.connected = true;
       console.log('Database connected successfully');
     } catch (err) {
@@ -77,7 +119,7 @@ export class DbClient {
         const dbConfig = {
           user: process.env.VITE_DB_USER,
           host: process.env.VITE_DB_HOST,
-          database: process.env.VITE_DB_NAME,
+          database: getDatabaseName(),
           password: process.env.VITE_DB_PASSWORD,
           port: parseInt(process.env.VITE_DB_PORT || '5432'),
           ssl: process.env.VITE_DB_SSL === 'true'
@@ -92,13 +134,36 @@ export class DbClient {
           ssl: dbConfig.ssl ? 'enabled' : 'disabled'
         });
 
-        this.client = new pg.Client(dbConfig);
+        // Use Pool for test environment and Client for development/production
+        if (usePool) {
+          // For test, create a connection string with SSL explicitly disabled
+          const connectionString = `postgresql://${dbConfig.user}:${dbConfig.password}@${dbConfig.host}:${dbConfig.port}/${dbConfig.database}?sslmode=disable`;
+          this.client = new pg.Pool({ connectionString });
+        } else {
+          this.client = new pg.Client(dbConfig);
+          await this.client.connect();
+        }
 
-        await this.client.connect();
         this.connected = true;
         console.log('Database connected successfully using direct parameters');
       } catch (fallbackErr) {
         console.error('Fallback connection also failed:', fallbackErr.message);
+
+        // If the database doesn't exist, provide helpful info
+        if (fallbackErr.message.includes('does not exist')) {
+          if (this.isTestEnv) {
+            console.error('\n=== TEST DATABASE SETUP REQUIRED ===');
+            console.error('It appears the test database does not exist. You need to run:');
+            console.error('npm run setup:test-db');
+            console.error('====================================\n');
+          } else {
+            console.error('\n=== DATABASE SETUP REQUIRED ===');
+            console.error('It appears the database does not exist. You need to create it:');
+            console.error('createdb recurse_bookings');
+            console.error('================================\n');
+          }
+        }
+
         this.client = null;
         this.connected = false;
         throw fallbackErr;
@@ -122,7 +187,11 @@ export class DbClient {
 
   async end() {
     if (this.client) {
-      await this.client.end();
+      if (usePool) {
+        await this.client.end();
+      } else {
+        await this.client.end();
+      }
       this.client = null;
       this.connected = false;
       console.log('Database connection closed');
