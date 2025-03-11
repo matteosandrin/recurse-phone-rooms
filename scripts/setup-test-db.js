@@ -88,7 +88,7 @@ async function setupTestDatabase() {
       }
     } catch (error) {
       console.error('Error checking/creating database:', error.message);
-      // If we're in GitHub Actions, the database might have been created in the workflow
+      // If the database might have been created in the workflow
       console.log('Continuing with setup assuming database exists...');
     } finally {
       adminClient.release();
