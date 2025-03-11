@@ -123,6 +123,10 @@ export class DbClient {
           password: process.env.VITE_DB_PASSWORD,
           port: parseInt(process.env.VITE_DB_PORT || '5432'),
           ssl: process.env.VITE_DB_SSL === 'true'
+            ? { rejectUnauthorized: true }
+            : (process.env.VITE_DB_SSL === 'no-verify'
+              ? { rejectUnauthorized: false }
+              : false)
         };
 
         // Log database connection details (excluding password)
@@ -136,9 +140,8 @@ export class DbClient {
 
         // Use Pool for test environment and Client for development/production
         if (usePool) {
-          // For test, create a connection string with SSL explicitly disabled
-          const connectionString = `postgresql://${dbConfig.user}:${dbConfig.password}@${dbConfig.host}:${dbConfig.port}/${dbConfig.database}?sslmode=disable`;
-          this.client = new pg.Pool({ connectionString });
+          // For test, create a pool with the direct config
+          this.client = new pg.Pool(dbConfig);
         } else {
           this.client = new pg.Client(dbConfig);
           await this.client.connect();

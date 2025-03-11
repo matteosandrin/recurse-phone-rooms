@@ -15,9 +15,9 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: admin
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: recurse_bookings_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
         ports:
           - 5432:5432
         # Set health checks to wait until postgres has started
@@ -41,7 +41,26 @@ jobs:
 
       - name: Set up environment
         run: |
+          # Create test database
+          PGPASSWORD=postgres psql -h localhost -U postgres -c 'CREATE DATABASE recurse_bookings_test;'
+
+          # Create .env.test file with correct GitHub Actions PostgreSQL credentials
+          cat > .env.test << EOF
+          VITE_DB_USER=postgres
+          VITE_DB_HOST=localhost
+          VITE_DB_NAME=recurse_bookings_test
+          VITE_DB_PASSWORD=postgres
+          VITE_DB_PORT=5432
+          VITE_DB_SSL=false
+          VITE_RECURSE_CLIENT_ID=test_client_id
+          VITE_RECURSE_CLIENT_SECRET=test_client_secret
+          VITE_OAUTH_REDIRECT_URI=http://localhost:5173/oauth/callback
+          EOF
+
+          # Copy .env.test to .env for compatibility
           cp .env.test .env
+
+          # Run the test database setup script
           npm run setup:test-db
 
       - name: Install Playwright browsers

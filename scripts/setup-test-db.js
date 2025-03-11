@@ -47,6 +47,14 @@ const TEST_USERS = [
 // Path to the SQL migration file
 const migrationFilePath = path.join(__dirname, '..', 'migrations', '001_init.sql');
 
+// Log database connection details (excluding password)
+console.log('Database connection details:');
+console.log(`- User: ${process.env.VITE_DB_USER}`);
+console.log(`- Host: ${process.env.VITE_DB_HOST}`);
+console.log(`- Database: ${process.env.VITE_DB_NAME}`);
+console.log(`- Port: ${process.env.VITE_DB_PORT}`);
+console.log(`- SSL: ${process.env.VITE_DB_SSL === 'true' ? 'enabled' : 'disabled'}`);
+
 // Create a PostgreSQL connection pool for admin operations
 // This will connect to the default postgres database to create our test database if needed
 const adminPool = new pg.Pool({
@@ -55,7 +63,7 @@ const adminPool = new pg.Pool({
   database: 'postgres', // Connect to default postgres database first
   password: process.env.VITE_DB_PASSWORD,
   port: parseInt(process.env.VITE_DB_PORT || '5432'),
-  ssl: false // Always disable SSL for tests
+  ssl: process.env.VITE_DB_SSL === 'true' ? { rejectUnauthorized: true } : false
 });
 
 async function setupTestDatabase() {
@@ -78,6 +86,10 @@ async function setupTestDatabase() {
       } else {
         console.log('Test database already exists');
       }
+    } catch (error) {
+      console.error('Error checking/creating database:', error.message);
+      // If we're in GitHub Actions, the database might have been created in the workflow
+      console.log('Continuing with setup assuming database exists...');
     } finally {
       adminClient.release();
     }
@@ -89,7 +101,7 @@ async function setupTestDatabase() {
       database: process.env.VITE_DB_NAME, // Now connect to the test database
       password: process.env.VITE_DB_PASSWORD,
       port: parseInt(process.env.VITE_DB_PORT || '5432'),
-      ssl: false // Always disable SSL for tests
+      ssl: process.env.VITE_DB_SSL === 'true' ? { rejectUnauthorized: true } : false
     });
 
     const client = await testPool.connect();
