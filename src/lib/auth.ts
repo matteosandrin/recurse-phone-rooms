@@ -101,7 +101,19 @@ export async function handleOAuthCallback(code: string) {
   }
 }
 
-export function signOut() {
+export async function signOut() {
+  // Remove from localStorage
   localStorage.removeItem('recurse_user');
   user.set(null);
+
+  // Call the logout endpoint to clear the authentication cookie
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include'
+    });
+  } catch (error) {
+    console.error('Error during logout:', error);
+    // Continue with local signout even if server logout fails
+  }
 }

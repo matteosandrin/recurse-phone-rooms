@@ -35,7 +35,9 @@ export const db = {
     // Get all rooms
     async getRooms(): Promise<Room[]> {
         try {
-            const response = await fetch(ROOMS_URL);
+            const response = await fetch(ROOMS_URL, {
+                credentials: 'include' // Include cookies for authentication
+            });
 
             if (!response.ok) {
                 const error = await response.json();
@@ -52,7 +54,9 @@ export const db = {
     // Get bookings for calendar view
     async getBookings(): Promise<Booking[]> {
         try {
-            const response = await fetch(BOOKINGS_URL);
+            const response = await fetch(BOOKINGS_URL, {
+                credentials: 'include' // Include cookies for authentication
+            });
 
             if (!response.ok) {
                 const error = await response.json();
@@ -69,7 +73,9 @@ export const db = {
     // Get bookings for a specific user
     async getUserBookings(userId: number): Promise<Booking[]> {
         try {
-            const response = await fetch(`${BOOKINGS_URL}?user_id=${userId}`);
+            const response = await fetch(`${BOOKINGS_URL}?user_id=${userId}`, {
+                credentials: 'include' // Include cookies for authentication
+            });
 
             if (!response.ok) {
                 const error = await response.json();
@@ -91,7 +97,8 @@ export const db = {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(booking)
+                body: JSON.stringify(booking),
+                credentials: 'include' // Include cookies for authentication
             });
 
             if (!response.ok) {
@@ -109,19 +116,15 @@ export const db = {
     // Delete a booking
     async deleteBooking(id: number): Promise<void> {
         try {
-            // Get current user
+            // Get current user to verify authentication
             const userStr = localStorage.getItem('recurse_user');
             if (!userStr) {
                 throw new DatabaseError('Not authenticated');
             }
 
-            const user = JSON.parse(userStr);
-
             const response = await fetch(`${BOOKINGS_URL}/${id}`, {
                 method: 'DELETE',
-                headers: {
-                    'X-User-ID': user.id.toString()
-                }
+                credentials: 'include', // Include cookies for authentication
             });
 
             if (!response.ok) {
@@ -138,7 +141,10 @@ export const db = {
     async isTimeSlotAvailable(roomId: number, startTime: Date, endTime: Date): Promise<boolean> {
         try {
             const response = await fetch(
-                `${BOOKINGS_URL}/check-availability?room_id=${roomId}&start_time=${startTime.toISOString()}&end_time=${endTime.toISOString()}`
+                `${BOOKINGS_URL}/check-availability?room_id=${roomId}&start_time=${startTime.toISOString()}&end_time=${endTime.toISOString()}`,
+                {
+                    credentials: 'include' // Include cookies for authentication
+                }
             );
 
             if (!response.ok) {

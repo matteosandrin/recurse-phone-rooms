@@ -1,3 +1,22 @@
 #!/bin/sh
-echo "Skipping tests for now..."
+. "$(dirname "$0")/_/husky.sh"
+
+# Display message indicating tests are running
+echo "📋 Running API tests before commit..."
+
+# Run API tests
+npm run test:api
+
+# If tests fail, prevent the commit
+if [ $? -ne 0 ]; then
+  echo "❌ API tests failed. Please fix the tests before committing."
+  echo ""
+  echo "🔍 Check if your test database is set up correctly:"
+  echo "   If this is your first time running tests, run: npm run setup:test-db"
+  echo ""
+  exit 1
+fi
+
+# If tests pass, allow the commit
+echo "✅ API tests passed. Continuing with commit..."
 exit 0
