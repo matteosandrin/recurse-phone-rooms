@@ -1,69 +1,82 @@
-// Load environment variables from .env file
+/**
+ * Server Application
+ *
+ * Supports multiple environments:
+ * - Development: Regular server for local development
+ * - Test: Test server for automated tests
+ * - Production: Production server with more security
+ */
+
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
-import { canDeleteBooking } from './auth-middleware.js';
-import { DbClient } from './db.js';
+import cookieParser from 'cookie-parser';
+import { canDeleteBooking, authenticate, testLogin } from './auth-middleware.js';
+import db from './db.js'; // Consolidated db module that handles both environments
 import fs from 'fs';
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Determine if we're in test mode
+const isTestEnv = process.env.NODE_ENV === 'test';
+
 // Load environment variables with proper priority
-console.log('=== Environment Setup ===');
-// Clear any existing environment variables that might conflict
-['VITE_RECURSE_CLIENT_ID', 'VITE_RECURSE_CLIENT_SECRET', 'VITE_OAUTH_REDIRECT_URI'].forEach(key => {
-  if (process.env[key]) {
-    console.log(`Clearing existing ${key}`);
-    delete process.env[key];
+if (!isTestEnv) {
+  console.log('=== Environment Setup ===');
+  // Clear any existing environment variables that might conflict
+  ['VITE_RECURSE_CLIENT_ID', 'VITE_RECURSE_CLIENT_SECRET', 'VITE_OAUTH_REDIRECT_URI'].forEach(key => {
+    if (process.env[key]) {
+      console.log(`Clearing existing ${key}`);
+      delete process.env[key];
+    }
+  });
+
+  // First try to load .env.local (highest priority)
+  const localEnvPath = path.resolve(__dirname, '..', '.env.local');
+  const localEnvResult = dotenv.config({ path: localEnvPath });
+  if (localEnvResult.error) {
+    console.log('No .env.local found or error loading it:', localEnvResult.error.message);
+
+    // As a fallback, try to load from .env.example
+    const exampleEnvPath = path.resolve(__dirname, '..', '.env.example');
+    if (fs.existsSync(exampleEnvPath)) {
+      console.log('Falling back to .env.example as a template');
+      dotenv.config({ path: exampleEnvPath });
+    }
+  } else {
+    console.log('Successfully loaded environment from .env.local');
   }
-});
 
-// Load environment variables - prioritize .env.local for development
-console.log(`Current NODE_ENV: ${process.env.NODE_ENV}`);
-// First try to load .env.local (highest priority)
-const localEnvPath = path.resolve(__dirname, '..', '.env.local');
-const localEnvResult = dotenv.config({ path: localEnvPath });
-if (localEnvResult.error) {
-  console.log('No .env.local found or error loading it:', localEnvResult.error.message);
-
-  // As a fallback, try to load from .env.example
-  const exampleEnvPath = path.resolve(__dirname, '..', '.env.example');
-  if (fs.existsSync(exampleEnvPath)) {
-    console.log('Falling back to .env.example as a template');
-    dotenv.config({ path: exampleEnvPath });
+  // Check critical environment variables
+  console.log('\n=== OAuth Configuration ===');
+  if (!process.env.VITE_RECURSE_CLIENT_ID) {
+    console.error('ERROR: Missing VITE_RECURSE_CLIENT_ID');
+  } else {
+    console.log(`Client ID: ${process.env.VITE_RECURSE_CLIENT_ID.substring(0, 8)}...`);
   }
-} else {
-  console.log('Successfully loaded environment from .env.local');
+
+  if (!process.env.VITE_RECURSE_CLIENT_SECRET) {
+    console.error('ERROR: Missing VITE_RECURSE_CLIENT_SECRET');
+  } else {
+    console.log(`Client Secret: Present`);
+  }
+
+  if (!process.env.VITE_OAUTH_REDIRECT_URI) {
+    console.error('ERROR: Missing VITE_OAUTH_REDIRECT_URI');
+  } else {
+    console.log(`Redirect URI: ${process.env.VITE_OAUTH_REDIRECT_URI}`);
+  }
+  console.log('========================\n');
 }
 
-// Check critical environment variables
-console.log('\n=== OAuth Configuration ===');
-if (!process.env.VITE_RECURSE_CLIENT_ID) {
-  console.error('ERROR: Missing VITE_RECURSE_CLIENT_ID');
-} else {
-  console.log(`Client ID: ${process.env.VITE_RECURSE_CLIENT_ID.substring(0, 8)}...`);
-}
-
-if (!process.env.VITE_RECURSE_CLIENT_SECRET) {
-  console.error('ERROR: Missing VITE_RECURSE_CLIENT_SECRET');
-} else {
-  console.log('Client Secret: Present');
-}
-
-if (!process.env.VITE_OAUTH_REDIRECT_URI) {
-  console.error('ERROR: Missing VITE_OAUTH_REDIRECT_URI');
-} else {
-  console.log(`Redirect URI: ${process.env.VITE_OAUTH_REDIRECT_URI}`);
-}
-console.log('========================\n');
-
+// Set up the Express app
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = isTestEnv ? (process.env.TEST_PORT || 3001) : (process.env.PORT || 3000);
 
 // Configure CORS to allow requests from our frontend
 app.use(cors({
@@ -76,44 +89,30 @@ app.use(cors({
   credentials: true
 }));
 
-// Parse JSON request bodies
+// Body parsing middleware
 app.use(express.json());
 
-// Database connection
-const db = new DbClient();
+// Cookie parsing middleware
+app.use(cookieParser());
 
-// Connect to the database
-db.connect()
-  .then(() => {
-    console.log('Database connected successfully');
-  })
-  .catch(err => {
-    console.error('Database connection error:', err.message);
-    console.error('Connection details:', {
-      host: process.env.VITE_DB_HOST,
-      database: process.env.VITE_DB_NAME,
-      port: process.env.VITE_DB_PORT,
-      error: err.stack
-    });
-  });
-
-// Serve static files from the dist directory in production
-app.use(express.static(path.join(__dirname, '../dist')));
-
-// Log environment information for debugging
-console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('OAuth Redirect URI:', process.env.VITE_OAUTH_REDIRECT_URI);
-if (process.env.VITE_OAUTH_REDIRECT_URI?.includes('localhost:3000')) {
-  console.warn('\nWARNING: Your OAuth redirect URI is set to port 3000, but your frontend is likely running on port 5173.');
-  console.warn('This can cause authentication issues. Update your .env.local file and Recurse Center OAuth app settings.\n');
+// Log environment variables
+console.log(`NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+console.log(`OAuth Redirect URI: ${process.env.VITE_OAUTH_REDIRECT_URI}`);
+if (isTestEnv) {
+  console.log(`Test server running on port ${PORT}`);
+} else {
+  console.log(`Server running on port ${PORT}`);
 }
 
-// Health check endpoint
+// Health Check endpoint - does not require authentication
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.status(200).json({ status: 'ok', environment: process.env.NODE_ENV });
 });
 
-// API route to handle OAuth token exchange
+// Authentication endpoints
+// =======================
+
+// OAuth callback endpoint for exchanging code for token
 app.post('/api/auth/callback', async (req, res) => {
   const { code } = req.body;
 
@@ -121,32 +120,25 @@ app.post('/api/auth/callback', async (req, res) => {
     return res.status(400).json({ error: 'Authorization code is required' });
   }
 
-  try {
-    console.log('Processing OAuth code exchange');
+  console.log('Processing OAuth code exchange');
 
-    // Exchange authorization code for access token
+  try {
+    // Exchange the code for an access token with Recurse Center
     let tokenResponse;
     try {
-      // Send the token request using URLSearchParams for the form data
-      tokenResponse = await axios({
-        method: 'post',
-        url: 'https://www.recurse.com/oauth/token',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json'
-        },
-        data: new URLSearchParams({
-          client_id: process.env.VITE_RECURSE_CLIENT_ID,
-          client_secret: process.env.VITE_RECURSE_CLIENT_SECRET,
-          grant_type: 'authorization_code',
-          code: code,
-          redirect_uri: process.env.VITE_OAUTH_REDIRECT_URI
-        }).toString()
+      tokenResponse = await axios.post('https://www.recurse.com/oauth/token', {
+        client_id: process.env.VITE_RECURSE_CLIENT_ID,
+        client_secret: process.env.VITE_RECURSE_CLIENT_SECRET,
+        redirect_uri: process.env.VITE_OAUTH_REDIRECT_URI,
+        grant_type: 'authorization_code',
+        code
       });
-
       console.log('Successfully obtained access token');
     } catch (tokenError) {
-      console.error('OAuth token exchange error:', tokenError.message);
+      console.error('Error exchanging code for token:', tokenError.message);
+      if (tokenError.response) {
+        console.error('Token error response data:', tokenError.response.data);
+      }
       return res.status(401).json({
         error: 'Failed to exchange authorization code for token',
         details: tokenError.response?.data || { error: 'unknown_error' }
@@ -206,6 +198,14 @@ app.post('/api/auth/callback', async (req, res) => {
 
       console.log('User data saved to database, ID:', dbUser.id);
 
+      // Set the auth_token cookie for authenticated API requests
+      res.cookie('auth_token', access_token, {
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000, // 1 day
+        sameSite: 'lax', // Allow cross-site requests from same-site navigation
+        secure: process.env.NODE_ENV === 'production' // Only use secure in production
+      });
+
       // Return user data to frontend
       res.json({
         id: dbUser.id,
@@ -227,8 +227,135 @@ app.post('/api/auth/callback', async (req, res) => {
   }
 });
 
+// Logout endpoint
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('auth_token');
+  res.status(200).json({ message: 'Logged out successfully' });
+});
+
+// Test-only endpoints (only available in development and test modes)
+if (process.env.NODE_ENV !== 'production') {
+  // Login endpoint for tests
+  app.post('/api/auth/test-login', testLogin);
+
+  // Test user setup endpoint
+  app.post('/api/test/setup-users', async (req, res) => {
+    const { users } = req.body || { users: [] };
+
+    try {
+      for (const user of users) {
+        // Check if user exists
+        const userCheck = await db.query('SELECT * FROM users WHERE id = $1', [user.id]);
+
+        if (userCheck.rows.length === 0) {
+          // Create the user with a test token that's predictable
+          await db.query(
+            `INSERT INTO users (id, recurse_id, email, name, access_token)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [user.id, user.recurse_id, user.email, user.name, `test-token-${user.id}`]
+          );
+          console.log(`Created test user: ${user.name} (ID: ${user.id})`);
+        } else {
+          console.log(`Test user already exists: ${user.name} (ID: ${user.id})`);
+        }
+      }
+      res.status(200).json({ message: 'Test users set up successfully' });
+    } catch (error) {
+      console.error('Error setting up test users:', error);
+      res.status(500).json({ error: 'Failed to set up test users' });
+    }
+  });
+
+  // Test cleanup endpoint - safely removes test resources
+  app.post('/api/test/cleanup', async (req, res) => {
+    // This endpoint is ONLY available in test mode for safety
+    if (process.env.NODE_ENV !== 'test') {
+      return res.status(403).json({
+        error: 'This endpoint is only available in test mode'
+      });
+    }
+
+    // Safety check: require testOnly parameter to be true
+    const { testOnly } = req.body;
+    if (testOnly !== true) {
+      return res.status(400).json({
+        error: 'For safety, the testOnly parameter must be set to true'
+      });
+    }
+
+    try {
+      console.log('Starting test resource cleanup...');
+
+      // Begin transaction for atomic cleanup
+      await db.query('BEGIN');
+
+      // 1. Delete all bookings for test users (IDs 1 and 2)
+      const deleteBookingsResult = await db.query(
+        'DELETE FROM bookings WHERE user_id IN (1, 2) RETURNING id'
+      );
+      const deletedBookingIds = deleteBookingsResult.rows.map(row => row.id);
+      console.log(`Deleted ${deleteBookingsResult.rowCount} test bookings: ${deletedBookingIds.join(', ') || 'none'}`);
+
+      // We'll preserve rooms since they're shared test fixtures
+      // But we can report which ones exist for informational purposes
+      const roomsResult = await db.query('SELECT id, name FROM rooms');
+      console.log(`Test rooms (preserved): ${roomsResult.rows.map(r => `${r.id}:${r.name}`).join(', ')}`);
+
+      // Commit the transaction
+      await db.query('COMMIT');
+
+      // Return success with details
+      res.status(200).json({
+        message: 'Test resources cleaned up successfully',
+        details: {
+          bookings: {
+            deleted: deleteBookingsResult.rowCount,
+            ids: deletedBookingIds
+          },
+          rooms: {
+            preserved: roomsResult.rowCount,
+            ids: roomsResult.rows.map(r => r.id)
+          }
+        }
+      });
+    } catch (error) {
+      // Rollback transaction on error
+      await db.query('ROLLBACK');
+      console.error('Error during test cleanup:', error);
+      res.status(500).json({
+        error: 'Failed to clean up test resources',
+        details: error.message
+      });
+    }
+  });
+
+  // Test endpoint to echo cookies and headers for debugging
+  app.get('/api/test/debug-auth', (req, res) => {
+    console.log('Debug auth headers:', req.headers);
+    res.json({
+      cookies: req.cookies,
+      headers: {
+        cookie: req.headers.cookie,
+        authorization: req.headers.authorization
+      },
+      user: req.user || null
+    });
+  });
+}
+
+// In test mode, add extra debug information
+if (process.env.NODE_ENV === 'test') {
+  app.use((req, res, next) => {
+    console.log(`[TEST] ${req.method} ${req.path} - Auth token: ${req.cookies?.auth_token ? 'Present' : 'Missing'}`);
+    next();
+  });
+}
+
+// API routes
+// ==========
+
 // API route to get rooms
-app.get('/api/rooms', async (req, res) => {
+app.get('/api/rooms', authenticate, async (req, res) => {
   try {
     const result = await db.query('SELECT * FROM rooms ORDER BY name');
     res.json(result.rows);
@@ -239,7 +366,7 @@ app.get('/api/rooms', async (req, res) => {
 });
 
 // API route to get bookings
-app.get('/api/bookings', async (req, res) => {
+app.get('/api/bookings', authenticate, async (req, res) => {
   try {
     const { user_id } = req.query;
 
@@ -268,8 +395,10 @@ app.get('/api/bookings', async (req, res) => {
 });
 
 // API route to create a booking
-app.post('/api/bookings', async (req, res) => {
-  const { user_id, room_id, start_time, end_time, notes } = req.body;
+app.post('/api/bookings', authenticate, async (req, res) => {
+  const { room_id, start_time, end_time, notes } = req.body;
+  // Get user_id from authenticated user
+  const user_id = req.user.id;
 
   try {
     // Check for booking conflicts
@@ -302,7 +431,7 @@ app.post('/api/bookings', async (req, res) => {
 });
 
 // API route to check booking availability
-app.get('/api/bookings/check-availability', async (req, res) => {
+app.get('/api/bookings/check-availability', authenticate, async (req, res) => {
   const { room_id, start_time, end_time } = req.query;
 
   try {
@@ -343,45 +472,12 @@ app.delete('/api/bookings/:id', canDeleteBooking, async (req, res) => {
   }
 });
 
-// Special endpoint for test setup (only available in development mode)
-if (process.env.NODE_ENV !== 'production') {
-  app.post('/api/test/setup-users', async (req, res) => {
-    try {
-      const { users } = req.body;
-
-      if (!users || !Array.isArray(users)) {
-        return res.status(400).json({ error: 'Users array is required' });
-      }
-
-      // Create users in the database
-      for (const user of users) {
-        await db.query(
-          `INSERT INTO users (id, recurse_id, email, name, access_token)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (id) DO UPDATE
-           SET recurse_id = $2, email = $3, name = $4, access_token = $5`,
-          [user.id, user.recurse_id, user.email, user.name, user.access_token || 'mock-token']
-        );
-        console.log(`Test user ${user.name} (ID: ${user.id}) created or updated`);
-      }
-
-      res.status(200).json({ message: 'Test users created or updated successfully' });
-    } catch (error) {
-      console.error('Error setting up test users:', error);
-      res.status(500).json({ error: 'Failed to set up test users' });
-    }
-  });
-}
-
 // Catch-all route to handle frontend routing
-// This must be AFTER all API routes
 app.get('*', (req, res) => {
-  // For any request that doesn't match an API route, send the main index.html
-  // This allows the client-side router to handle the route
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
+  res.status(404).json({ error: 'API endpoint not found' });
 });
 
 // Start the server
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  // Intentionally left blank, we've already logged the server start message
 });
