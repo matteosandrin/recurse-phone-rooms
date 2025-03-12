@@ -22,12 +22,23 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Determine if we're in test mode
+// Determine environment
 const isTestEnv = process.env.NODE_ENV === 'test';
+const isProduction = process.env.NODE_ENV === 'production';
+const isDevelopment = !isTestEnv && !isProduction;
 
-// Load environment variables with proper priority
-if (!isTestEnv) {
-  console.log('=== Environment Setup ===');
+console.log(`Current NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+
+// Environment variable loading strategy based on environment
+if (isTestEnv) {
+  // TEST ENVIRONMENT: Load from .env.test
+  console.log('Loading test environment variables from .env.test');
+  const testEnvPath = path.resolve(__dirname, '..', '.env.test');
+  dotenv.config({ path: testEnvPath });
+} else if (isDevelopment) {
+  // DEVELOPMENT ENVIRONMENT: Load from .env.local or .env.example
+  console.log('Loading development environment variables');
+
   // Clear any existing environment variables that might conflict
   ['VITE_RECURSE_CLIENT_ID', 'VITE_RECURSE_CLIENT_SECRET', 'VITE_OAUTH_REDIRECT_URI'].forEach(key => {
     if (process.env[key]) {
@@ -51,28 +62,31 @@ if (!isTestEnv) {
   } else {
     console.log('Successfully loaded environment from .env.local');
   }
-
-  // Check critical environment variables
-  console.log('\n=== OAuth Configuration ===');
-  if (!process.env.VITE_RECURSE_CLIENT_ID) {
-    console.error('ERROR: Missing VITE_RECURSE_CLIENT_ID');
-  } else {
-    console.log(`Client ID: ${process.env.VITE_RECURSE_CLIENT_ID.substring(0, 8)}...`);
-  }
-
-  if (!process.env.VITE_RECURSE_CLIENT_SECRET) {
-    console.error('ERROR: Missing VITE_RECURSE_CLIENT_SECRET');
-  } else {
-    console.log(`Client Secret: Present`);
-  }
-
-  if (!process.env.VITE_OAUTH_REDIRECT_URI) {
-    console.error('ERROR: Missing VITE_OAUTH_REDIRECT_URI');
-  } else {
-    console.log(`Redirect URI: ${process.env.VITE_OAUTH_REDIRECT_URI}`);
-  }
-  console.log('========================\n');
+} else {
+  // PRODUCTION ENVIRONMENT: Use environment variables provided by Railway
+  console.log('Using production environment variables from Railway');
 }
+
+// Check and log critical environment variables
+console.log('\n=== OAuth Configuration ===');
+if (!process.env.VITE_RECURSE_CLIENT_ID) {
+  console.error('ERROR: Missing VITE_RECURSE_CLIENT_ID');
+} else {
+  console.log(`Client ID: ${process.env.VITE_RECURSE_CLIENT_ID.substring(0, 8)}...`);
+}
+
+if (!process.env.VITE_RECURSE_CLIENT_SECRET) {
+  console.error('ERROR: Missing VITE_RECURSE_CLIENT_SECRET');
+} else {
+  console.log(`Client Secret: Present`);
+}
+
+if (!process.env.VITE_OAUTH_REDIRECT_URI) {
+  console.error('ERROR: Missing VITE_OAUTH_REDIRECT_URI');
+} else {
+  console.log(`Redirect URI: ${process.env.VITE_OAUTH_REDIRECT_URI}`);
+}
+console.log('========================\n');
 
 // Set up the Express app
 const app = express();
@@ -472,9 +486,19 @@ app.delete('/api/bookings/:id', canDeleteBooking, async (req, res) => {
   }
 });
 
-// Catch-all route to handle frontend routing
-app.get('*', (req, res) => {
+// Serve static files from the frontend build directory
+const staticPath = path.join(__dirname, '..', 'dist');
+console.log(`Serving static files from: ${staticPath}`);
+app.use(express.static(staticPath));
+
+// Catch all API routes that haven't been matched and return 404
+app.all('/api/*', (req, res) => {
   res.status(404).json({ error: 'API endpoint not found' });
+});
+
+// Catch-all route to handle frontend routing - serve index.html for client-side routing
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
 });
 
 // Start the server
