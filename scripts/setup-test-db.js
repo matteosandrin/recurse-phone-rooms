@@ -18,6 +18,12 @@ import fs from 'fs';
 // Set NODE_ENV to test to ensure we're using test configuration
 process.env.NODE_ENV = 'test';
 
+// Detect GitHub Actions environment
+const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
+if (isGitHubActions) {
+  console.log('Detected GitHub Actions environment');
+}
+
 // Get the directory path
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,55 +53,85 @@ const TEST_USERS = [
 // Path to the SQL migration file
 const migrationFilePath = path.join(__dirname, '..', 'migrations', '001_init.sql');
 
+// Log database connection details (excluding password)
+console.log('Database connection details:');
+console.log(`- User: ${process.env.VITE_DB_USER}`);
+console.log(`- Host: ${process.env.VITE_DB_HOST}`);
+console.log(`- Database: ${process.env.VITE_DB_NAME}`);
+console.log(`- Port: ${process.env.VITE_DB_PORT}`);
+console.log(`- SSL: ${process.env.VITE_DB_SSL === 'true' ? 'enabled' : 'disabled'}`);
+console.log(`- GitHub Actions: ${isGitHubActions ? 'yes' : 'no'}`);
+
 // Create a PostgreSQL connection pool for admin operations
-// This will connect to the default postgres database to create our test database if needed
-const adminPool = new pg.Pool({
+// In GitHub Actions, we can skip this step because the database is created via psql
+const adminConfig = {
   user: process.env.VITE_DB_USER,
   host: process.env.VITE_DB_HOST,
   database: 'postgres', // Connect to default postgres database first
   password: process.env.VITE_DB_PASSWORD,
   port: parseInt(process.env.VITE_DB_PORT || '5432'),
-  ssl: false // Always disable SSL for tests
-});
+  ssl: process.env.VITE_DB_SSL === 'true' ? { rejectUnauthorized: true } : false
+};
+
+console.log('Admin pool config:', { ...adminConfig, password: '******' });
+const adminPool = new pg.Pool(adminConfig);
 
 async function setupTestDatabase() {
   console.log('Setting up test database environment...');
 
   try {
-    // First check if our test database exists and create it if not
-    const adminClient = await adminPool.connect();
-    try {
-      console.log(`Checking if test database ${process.env.VITE_DB_NAME} exists...`);
-      const dbCheck = await adminClient.query(`
-        SELECT 1 FROM pg_database WHERE datname = $1
-      `, [process.env.VITE_DB_NAME]);
+    // Skip database creation in GitHub Actions since it's already created via psql in the workflow
+    if (!isGitHubActions) {
+      // First check if our test database exists and create it if not
+      console.log('Connecting to admin database to check/create test database...');
+      const adminClient = await adminPool.connect();
+      try {
+        console.log(`Checking if test database ${process.env.VITE_DB_NAME} exists...`);
+        const dbCheck = await adminClient.query(`
+          SELECT 1 FROM pg_database WHERE datname = $1
+        `, [process.env.VITE_DB_NAME]);
 
-      if (dbCheck.rows.length === 0) {
-        console.log(`Creating test database ${process.env.VITE_DB_NAME}...`);
-        // Need to use template0 to avoid encoding issues
-        await adminClient.query(`CREATE DATABASE ${process.env.VITE_DB_NAME} TEMPLATE template0`);
-        console.log('Test database created successfully');
-      } else {
-        console.log('Test database already exists');
+        if (dbCheck.rows.length === 0) {
+          console.log(`Creating test database ${process.env.VITE_DB_NAME}...`);
+          // Need to use template0 to avoid encoding issues
+          await adminClient.query(`CREATE DATABASE ${process.env.VITE_DB_NAME} TEMPLATE template0`);
+          console.log('Test database created successfully');
+        } else {
+          console.log('Test database already exists');
+        }
+      } catch (error) {
+        console.error('Error checking/creating database:', error.message);
+        // If the database might have been created in the workflow
+        console.log('Continuing with setup assuming database exists...');
+      } finally {
+        adminClient.release();
       }
-    } finally {
-      adminClient.release();
+    } else {
+      console.log('Skipping database creation check in GitHub Actions, assuming database was created in workflow');
     }
 
     // Now connect to the test database to set up tables and data
-    const testPool = new pg.Pool({
+    const testConfig = {
       user: process.env.VITE_DB_USER,
       host: process.env.VITE_DB_HOST,
       database: process.env.VITE_DB_NAME, // Now connect to the test database
       password: process.env.VITE_DB_PASSWORD,
       port: parseInt(process.env.VITE_DB_PORT || '5432'),
-      ssl: false // Always disable SSL for tests
-    });
+      ssl: process.env.VITE_DB_SSL === 'true' ? { rejectUnauthorized: true } : false
+    };
 
+    console.log('Test pool config:', { ...testConfig, password: '******' });
+    const testPool = new pg.Pool(testConfig);
+
+    console.log('Connecting to test database...');
     const client = await testPool.connect();
     console.log(`Connected to test database ${process.env.VITE_DB_NAME}`);
 
     try {
+      // Verify connection with simple query
+      const testQuery = await client.query('SELECT NOW()');
+      console.log(`Test query successful: ${testQuery.rows[0].now}`);
+
       // Check if tables exist
       const tableCheck = await client.query(`
         SELECT EXISTS (
@@ -111,9 +147,11 @@ async function setupTestDatabase() {
         console.log('Tables do not exist, running migration...');
 
         // Read the migration SQL file
+        console.log(`Reading migration file from ${migrationFilePath}`);
         const migrationSQL = fs.readFileSync(migrationFilePath, 'utf8');
 
         // Run the migration
+        console.log('Running SQL migration...');
         await client.query(migrationSQL);
         console.log('Migration completed');
       } else {
@@ -157,6 +195,7 @@ async function setupTestDatabase() {
     }
   } catch (error) {
     console.error('Error setting up test database:', error);
+    console.error('Full error details:', error.stack);
     process.exit(1);
   } finally {
     await adminPool.end();
@@ -164,4 +203,9 @@ async function setupTestDatabase() {
 }
 
 // Run the setup
-setupTestDatabase();
+setupTestDatabase()
+  .then(() => console.log('Setup completed successfully'))
+  .catch(err => {
+    console.error('Fatal error in setup:', err);
+    process.exit(1);
+  });

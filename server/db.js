@@ -61,6 +61,9 @@ function getDatabaseName() {
 // Check if we should use a Pool or Client
 const usePool = process.env.NODE_ENV === 'test';
 
+// Detect if we're running in GitHub Actions
+const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
+
 // Create a wrapper around pg.Client/Pool that provides a consistent interface
 export class DbClient {
   constructor() {
@@ -75,6 +78,39 @@ export class DbClient {
     if (this.connected) return;
 
     try {
+      const databaseName = getDatabaseName();
+
+      // In GitHub Actions, use direct connection parameters to avoid service file issues
+      if (isGitHubActions) {
+        console.log('Detected GitHub Actions environment, using direct connection parameters');
+        const dbConfig = {
+          user: process.env.VITE_DB_USER,
+          host: process.env.VITE_DB_HOST,
+          database: databaseName,
+          password: process.env.VITE_DB_PASSWORD,
+          port: parseInt(process.env.VITE_DB_PORT || '5432'),
+          ssl: process.env.VITE_DB_SSL === 'true'
+            ? { rejectUnauthorized: true }
+            : false
+        };
+
+        // Log database connection details (excluding password)
+        console.log('Connecting with:', {
+          user: dbConfig.user,
+          host: dbConfig.host,
+          database: dbConfig.database,
+          port: dbConfig.port,
+          ssl: dbConfig.ssl ? 'enabled' : 'disabled'
+        });
+
+        // Use Pool for test environment
+        this.client = new pg.Pool(dbConfig);
+        this.connected = true;
+        console.log('Database connected successfully using direct parameters');
+        return;
+      }
+
+      // For local environments, try using pg_service.conf first
       // Set PGSERVICEFILE environment variable to look for pg_service.conf in the project directory
       const pgServicePath = path.resolve(__dirname, '..', 'pg_service.conf');
       if (fs.existsSync(pgServicePath)) {
@@ -83,7 +119,6 @@ export class DbClient {
       }
 
       // Service configuration with explicit database name
-      const databaseName = getDatabaseName();
       const serviceConfig = {
         service: this.service,
         database: databaseName // Prevent defaulting to OS username
@@ -123,6 +158,10 @@ export class DbClient {
           password: process.env.VITE_DB_PASSWORD,
           port: parseInt(process.env.VITE_DB_PORT || '5432'),
           ssl: process.env.VITE_DB_SSL === 'true'
+            ? { rejectUnauthorized: true }
+            : (process.env.VITE_DB_SSL === 'no-verify'
+              ? { rejectUnauthorized: false }
+              : false)
         };
 
         // Log database connection details (excluding password)
@@ -136,9 +175,8 @@ export class DbClient {
 
         // Use Pool for test environment and Client for development/production
         if (usePool) {
-          // For test, create a connection string with SSL explicitly disabled
-          const connectionString = `postgresql://${dbConfig.user}:${dbConfig.password}@${dbConfig.host}:${dbConfig.port}/${dbConfig.database}?sslmode=disable`;
-          this.client = new pg.Pool({ connectionString });
+          // For test, create a pool with the direct config
+          this.client = new pg.Pool(dbConfig);
         } else {
           this.client = new pg.Client(dbConfig);
           await this.client.connect();

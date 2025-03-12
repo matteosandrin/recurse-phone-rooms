@@ -1275,7 +1275,7 @@
                         <div class="text-white">
                             {#if selectedBooking}
                                 {rooms.find(
-                                    (r) => r.id === selectedBooking.room_id,
+                                    (r) => r.id === selectedBooking?.room_id,
                                 )?.name || "Unknown Room"}
                             {:else}
                                 Unknown Room
