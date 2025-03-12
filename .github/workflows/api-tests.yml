@@ -41,11 +41,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Set up environment
+      - name: Debug PostgreSQL Connection
         run: |
-          # Create test database - explicitly connect to postgres database
+          echo "Testing PostgreSQL connection..."
+          # Check PostgreSQL version
+          PGPASSWORD=password psql -h localhost -U admin -d postgres -c 'SELECT version();'
+
+          echo "List all databases..."
+          PGPASSWORD=password psql -h localhost -U admin -d postgres -c '\l'
+
+          echo "Creating test database..."
+          PGPASSWORD=password psql -h localhost -U admin -d postgres -c 'DROP DATABASE IF EXISTS recurse_bookings_test;'
           PGPASSWORD=password psql -h localhost -U admin -d postgres -c 'CREATE DATABASE recurse_bookings_test;'
 
+          echo "Verifying test database..."
+          PGPASSWORD=password psql -h localhost -U admin -d postgres -c '\l'
+
+      - name: Set up environment
+        run: |
           # Create .env.test file with the same credentials as local test environment
           cat > .env.test << EOF
           VITE_DB_USER=admin
@@ -57,17 +70,19 @@ jobs:
           VITE_RECURSE_CLIENT_ID=test_client_id
           VITE_RECURSE_CLIENT_SECRET=test_client_secret
           VITE_OAUTH_REDIRECT_URI=http://localhost:5173/oauth/callback
+          GITHUB_ACTIONS=true
           EOF
 
           # Print environment for debugging
           echo "Current environment:"
-          env | grep -E 'PG|VITE'
+          env | grep -E 'PG|VITE|GITHUB'
 
           # Copy .env.test to .env for compatibility
           cp .env.test .env
 
-          # Run the test database setup script
-          NODE_ENV=test npm run setup:test-db
+          # Run our direct database setup script
+          echo "Running direct database setup script..."
+          node scripts/direct-db-setup.js
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
