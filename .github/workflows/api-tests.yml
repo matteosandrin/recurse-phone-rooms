@@ -1,5 +1,5 @@
 name: API Tests
-# Adding this comment to force a new workflow run - Testing Playwright browser caching
+# Adding this comment to force a new workflow run - Testing with correct Playwright image tag
 
 on:
   push:
@@ -9,7 +9,12 @@ on:
 
 jobs:
   test:
+    # Use the official Playwright Docker image which has all dependencies pre-installed
     runs-on: ubuntu-latest
+    container:
+      # Use the official Playwright Docker image with Ubuntu Jammy (22.04 LTS) base
+      image: mcr.microsoft.com/playwright:v1.51.0-jammy
+      options: --ipc=host
 
     services:
       # Set up PostgreSQL service for tests
@@ -41,28 +46,65 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Check if PostgreSQL client exists and install if needed
+      - name: Ensure PostgreSQL client is available
+        run: |
+          if ! command -v psql &> /dev/null; then
+            echo "PostgreSQL client not found. Installing..."
+            apt-get update
+            apt-get install -y postgresql-client
+          else
+            echo "PostgreSQL client is already installed"
+            psql --version
+          fi
+
       - name: Debug PostgreSQL Connection
         run: |
           echo "Testing PostgreSQL connection..."
           # Check PostgreSQL version
-          PGPASSWORD=password psql -h localhost -U admin -d postgres -c 'SELECT version();'
+          PGPASSWORD=password psql -h postgres -U admin -d postgres -c 'SELECT version();'
 
           echo "List all databases..."
-          PGPASSWORD=password psql -h localhost -U admin -d postgres -c '\l'
+          PGPASSWORD=password psql -h postgres -U admin -d postgres -c '\l'
 
           echo "Creating test database..."
-          PGPASSWORD=password psql -h localhost -U admin -d postgres -c 'DROP DATABASE IF EXISTS recurse_bookings_test;'
-          PGPASSWORD=password psql -h localhost -U admin -d postgres -c 'CREATE DATABASE recurse_bookings_test;'
+          PGPASSWORD=password psql -h postgres -U admin -d postgres -c 'DROP DATABASE IF EXISTS recurse_bookings_test;'
+          PGPASSWORD=password psql -h postgres -U admin -d postgres -c 'CREATE DATABASE recurse_bookings_test;'
 
           echo "Verifying test database..."
-          PGPASSWORD=password psql -h localhost -U admin -d postgres -c '\l'
+          PGPASSWORD=password psql -h postgres -U admin -d postgres -c '\l'
+
+      # Install socat for port forwarding
+      - name: Install socat for port forwarding
+        run: |
+          echo "Installing socat for port forwarding..."
+          apt-get update
+          apt-get install -y socat
+
+      # Set up port forwarding from localhost:5432 to postgres:5432
+      - name: Setup port forwarding from localhost to postgres
+        run: |
+          echo "Setting up port forwarding from localhost:5432 to postgres:5432..."
+          # Get the IP of the postgres service container
+          POSTGRES_IP=$(getent hosts postgres | awk '{ print $1 }')
+          echo "Postgres service IP: $POSTGRES_IP"
+
+          # Start socat in the background to forward connections
+          socat TCP-LISTEN:5432,fork TCP:$POSTGRES_IP:5432 &
+
+          # Give socat a moment to start
+          sleep 2
+
+          # Verify the connection works through the forwarded port
+          echo "Testing localhost forwarded connection:"
+          PGPASSWORD=password psql -h localhost -U admin -d postgres -c 'SELECT version();'
 
       - name: Set up environment
         run: |
           # Create .env.test file with the same credentials as local test environment
           cat > .env.test << EOF
           VITE_DB_USER=admin
-          VITE_DB_HOST=localhost
+          VITE_DB_HOST=postgres
           VITE_DB_NAME=recurse_bookings_test
           VITE_DB_PASSWORD=password
           VITE_DB_PORT=5432
@@ -84,26 +126,7 @@ jobs:
           echo "Running direct database setup script..."
           node scripts/direct-db-setup.js
 
-      # Cache Playwright browsers - this is the key addition
-      - name: Cache Playwright browsers
-        uses: actions/cache@v3
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          # The cache key depends on the Playwright version in package-lock.json
-          key: playwright-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            playwright-${{ runner.os }}-
-
-      # Only run installation if cache miss
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-
-      # If cache hit, just ensure browsers dependencies are installed
-      - name: Install Playwright dependencies (if cache hit)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+      # No need to cache or install Playwright browsers or dependencies - the Docker image has everything!
 
       - name: Run API tests
         run: npm run test:api
