@@ -2,9 +2,58 @@
 // This provides a production-like authentication flow for both environments
 
 import db from './db.js';
+import crypto from 'crypto';
+
+// Helper function to hash API keys
+function hashApiKey(apiKey) {
+  return crypto.createHash('sha256').update(apiKey).digest('hex');
+}
+
+async function getUserFromApiKey(apiKey) {
+  try {
+    const keyHash = hashApiKey(apiKey);
+    const apiKeyResult = await db.query(
+      `SELECT ak.id as api_key_id, u.*
+        FROM api_keys ak
+        JOIN users u ON ak.user_id = u.id
+        WHERE ak.key_hash = $1`,
+      [keyHash]
+    );
+    if (apiKeyResult.rows.length > 0) {
+      const row = apiKeyResult.rows[0];
+      await db.query(
+        'UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = $1',
+        [row.api_key_id]
+      );
+      return {
+        id: row.id,
+        recurse_id: row.recurse_id,
+        email: row.email,
+        name: row.name,
+        access_token: row.access_token,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      };
+    } else {
+      console.error('Error: API key not found');
+      return null;
+    }
+  } catch (error) {
+    console.error('Error authenticating with API key:', error);
+    return null;
+  }
+}
 
 // Function to get the user from the request
 async function getUserFromRequest(req) {
+
+  // API key-based authentication
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const apiKey = authHeader.substring(7); // Remove 'Bearer ' prefix
+    return getUserFromApiKey(apiKey);
+  }
+
   // Cookie-based authentication for both production and test environments
   const token = req.cookies?.auth_token;
 
@@ -134,3 +183,5 @@ export async function testLogin(req, res) {
     res.status(500).json({ error: 'Server error during login' });
   }
 }
+
+export { hashApiKey };

@@ -14,7 +14,8 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import cookieParser from 'cookie-parser';
-import { canDeleteBooking, authenticate, testLogin } from './auth-middleware.js';
+import crypto from 'crypto';
+import { canDeleteBooking, authenticate, testLogin, hashApiKey } from './auth-middleware.js';
 import db from './db.js'; // Consolidated db module that handles both environments
 import fs from 'fs';
 
@@ -556,6 +557,93 @@ app.delete('/api/bookings/:id', canDeleteBooking, async (req, res) => {
   } catch (error) {
     console.error('Error deleting booking:', error);
     res.status(500).json({ error: 'Failed to delete booking' });
+  }
+});
+
+// API Key Management Endpoints
+// =============================
+
+// API route to create a new API key
+app.post('/api/api-keys', authenticate, async (req, res) => {
+  const userId = req.user.id;
+  const { name } = req.body;
+
+  try {
+    const apiKey = crypto.randomBytes(32).toString('hex');
+    const keyHash = hashApiKey(apiKey);
+    // Store the first 8 characters as a prefix for display
+    const keyPrefix = apiKey.substring(0, 8);
+    const result = await db.query(
+      `INSERT INTO api_keys (user_id, key_hash, key_prefix, name)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, user_id, key_prefix, name, created_at`,
+      [userId, keyHash, keyPrefix, name || null]
+    );
+    const createdKey = result.rows[0];
+    // Return the full API key ONCE (it cannot be retrieved again)
+    res.status(201).json({
+      id: createdKey.id,
+      key: apiKey,
+      name: createdKey.name,
+      prefix: createdKey.key_prefix,
+      created_at: createdKey.created_at
+    });
+  } catch (error) {
+    console.error('Error creating API key:', error);
+    res.status(500).json({ error: 'Failed to create API key' });
+  }
+});
+
+// API route to list user's API keys
+app.get('/api/api-keys', authenticate, async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const result = await db.query(
+      `SELECT id, key_prefix, name, last_used_at, created_at
+       FROM api_keys
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [userId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching API keys:', error);
+    res.status(500).json({ error: 'Failed to fetch API keys' });
+  }
+});
+
+// API route to delete an API key
+app.delete('/api/api-keys/:id', authenticate, async (req, res) => {
+  const keyId = req.params.id;
+  const userId = req.user.id;
+
+  try {
+    // Check if the API key exists and belongs to the user
+    const checkResult = await db.query(
+      'SELECT * FROM api_keys WHERE id = $1',
+      [keyId]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'API key not found' });
+    }
+
+    if (checkResult.rows[0].user_id !== userId) {
+      return res.status(403).json({ error: 'You are not authorized to delete this API key' });
+    }
+
+    // Delete the API key
+    await db.query(
+      'DELETE FROM api_keys WHERE id = $1',
+      [keyId]
+    );
+
+    res.status(200).json({ message: 'API key deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting API key:', error);
+    res.status(500).json({ error: 'Failed to delete API key' });
   }
 });
 
