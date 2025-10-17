@@ -10,6 +10,7 @@ A simple application for Recurse Center participants to book phone rooms for cal
 - See existing bookings in a weekly calendar view
 - Prevent double-bookings with built-in validation
 - Authentication-protected API endpoints for secure booking management
+- API key management for programmatic access to the booking system
 
 ## Technology Stack
 
@@ -115,11 +116,12 @@ recurse-bookings/
 
 ## Database Schema
 
-The application uses three main tables:
+The application uses four main tables:
 
-- `users`: Stores user information from Recurse Center (id, email, name, recurse_id)
+- `users`: Stores user information from Recurse Center (id, email, name, recurse_id, access_token)
 - `rooms`: Lists available phone rooms (id, name, description, capacity)
 - `bookings`: Tracks room reservations (id, user_id, room_id, start_time, end_time, notes)
+- `api_keys`: Manages API keys for programmatic access (id, user_id, key_hash, key_prefix, name, last_used_at, created_at)
 
 ## Testing
 
@@ -162,6 +164,80 @@ End-to-end tests use Playwright to simulate user interactions in a browser envir
 3. Set environment variables for production
 4. Build the application: `npm run build`
 5. Deploy the built files from the `dist` directory to your hosting service
+
+## API Keys
+
+API keys allow you to access the booking system programmatically without using the OAuth flow. This is useful for building integrations, automations, or command-line tools.
+
+### Creating an API Key
+
+To create an API key, send a POST request to `/api/api-keys` with an optional name:
+
+```bash
+curl -X POST http://localhost:3000/api/api-keys \
+  -H "Cookie: auth_token=YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Integration"}'
+```
+
+The response will include your API key (returned only once):
+
+```json
+{
+  "id": 1,
+  "key": "a1b2c3d4e5f6...",
+  "name": "My Integration",
+  "prefix": "a1b2c3d4",
+  "created_at": "2025-10-17T12:00:00Z"
+}
+```
+
+**Important:** Save the `key` value immediately. It cannot be retrieved again.
+
+### Using an API Key
+
+Include your API key in the `Authorization` header as a Bearer token:
+
+```bash
+curl http://localhost:3000/api/rooms \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+API keys work with all authenticated endpoints, including:
+- `GET /api/rooms` - List all rooms
+- `GET /api/bookings` - List bookings (with filters)
+- `POST /api/bookings` - Create a new booking
+- `DELETE /api/bookings/:id` - Delete a booking
+
+### Managing API Keys
+
+**List your API keys:**
+
+```bash
+curl http://localhost:3000/api/api-keys \
+  -H "Cookie: auth_token=YOUR_AUTH_TOKEN"
+```
+
+Response:
+
+```json
+[
+  {
+    "id": 1,
+    "key_prefix": "a1b2c3d4",
+    "name": "My Integration",
+    "last_used_at": "2025-10-17T13:30:00Z",
+    "created_at": "2025-10-17T12:00:00Z"
+  }
+]
+```
+
+**Delete an API key:**
+
+```bash
+curl -X DELETE http://localhost:3000/api/api-keys/1 \
+  -H "Cookie: auth_token=YOUR_AUTH_TOKEN"
+```
 
 ## License
 
