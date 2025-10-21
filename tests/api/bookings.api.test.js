@@ -1,12 +1,16 @@
 import { test, expect } from '@playwright/test';
 import axios from 'axios';
-import { API_BASE_URL, USERS, authRequest, setupTestUsers } from './test-setup.js';
+import { API_BASE_URL, USERS, authRequest, apiKeyRequest, setupTestUsers } from './test-setup.js';
 
 // Tracking IDs for cleanup
 let testRoomId = null;
 // Use objects to track all created resources for proper cleanup
 const testResources = {
   bookings: {
+    alice: [],
+    bob: []
+  },
+  apiKeys: {
     alice: [],
     bob: []
   },
@@ -572,5 +576,360 @@ test.describe('Booking API Tests', () => {
       // We expect a 401 Unauthorized error
       expect(error.response?.status).toBe(401);
     }
+  });
+});
+
+// API Key Management Tests
+// ========================
+test.describe('API Key Management Tests', () => {
+  test.beforeAll(async () => {
+    try {
+      // Check if the server is running with health check
+      await axios.get(`${API_BASE_URL}/health`);
+      console.log('Server is running and API health check is accessible');
+      // Set up test users
+      await setupTestUsers();
+      console.log('Test users setup completed for API Key tests');
+      // Get a room ID for tests that need to create bookings
+      const aliceClient = await authRequest(USERS.ALICE.id);
+      const roomsResponse = await aliceClient.get('/rooms');
+      if (roomsResponse.data.length > 0) {
+        testRoomId = roomsResponse.data[0].id;
+        console.log(`Using room ID ${testRoomId} for API Key tests`);
+      }
+    } catch (error) {
+      console.error('ERROR: API server is not running or setup failed');
+      throw new Error(`API server must be running for these tests: ${error.message}`);
+    }
+  });
+
+  // Cleanup: Delete any test API keys and bookings after all tests
+  test.afterAll(async () => {
+    console.log('Running cleanup for API Key Management tests...');
+    if (testResources.apiKeys.alice.length > 0) {
+      try {
+        const aliceClient = await authRequest(USERS.ALICE.id);
+        for (const keyId of testResources.apiKeys.alice) {
+          try {
+            await aliceClient.delete(`/api-keys/${keyId}`);
+            console.log(`Cleaned up Alice's API key: ${keyId}`);
+          } catch (error) {
+            console.log(`Could not delete Alice's API key ${keyId}: ${error.message}`);
+          }
+        }
+      } catch (error) {
+        console.log('Could not authenticate Alice for API key cleanup');
+      }
+    }
+    if (testResources.apiKeys.bob.length > 0) {
+      try {
+        const bobClient = await authRequest(USERS.BOB.id);
+        for (const keyId of testResources.apiKeys.bob) {
+          try {
+            await bobClient.delete(`/api-keys/${keyId}`);
+            console.log(`Cleaned up Bob's API key: ${keyId}`);
+          } catch (error) {
+            console.log(`Could not delete Bob's API key ${keyId}: ${error.message}`);
+          }
+        }
+      } catch (error) {
+        console.log('Could not authenticate Bob for API key cleanup');
+      }
+    }
+    // Clean up any bookings created during these tests
+    if (testResources.bookings.bob.length > 0) {
+      try {
+        const bobClient = await authRequest(USERS.BOB.id);
+        for (const bookingId of testResources.bookings.bob) {
+          try {
+            await bobClient.delete(`/bookings/${bookingId}`);
+            console.log(`Cleaned up Bob's booking: ${bookingId}`);
+          } catch (error) {
+            console.log(`Could not delete Bob's booking ${bookingId}: ${error.message}`);
+          }
+        }
+      } catch (error) {
+        console.log('Could not authenticate Bob for booking cleanup');
+      }
+    }
+
+    console.log('API Key Management tests cleanup completed.');
+  });
+
+  test('should create an API key successfully', async ({ page }) => {
+    const aliceClient = await authRequest(USERS.ALICE.id);
+
+    // Create an API key
+    const response = await aliceClient.post('/api-keys', {
+      name: 'Test API Key'
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.data).toHaveProperty('id');
+    expect(response.data).toHaveProperty('key');
+    expect(response.data).toHaveProperty('name', 'Test API Key');
+    expect(response.data).toHaveProperty('prefix');
+    expect(response.data).toHaveProperty('created_at');
+    expect(response.data.key).toMatch(/^[0-9a-f]{64}$/);
+    expect(response.data.prefix).toBe(response.data.key.substring(0, 8));
+
+    testResources.apiKeys.alice.push(response.data.id);
+    console.log(`Created API key ID ${response.data.id} for test`);
+  });
+
+  test('should create an API key without a name', async ({ page }) => {
+    const aliceClient = await authRequest(USERS.ALICE.id);
+
+    // Create an API key
+    const response = await aliceClient.post('/api-keys', {});
+
+    expect(response.status).toBe(201);
+    expect(response.data).toHaveProperty('id');
+    expect(response.data).toHaveProperty('key');
+    expect(response.data.name).toBeNull();
+
+    testResources.apiKeys.alice.push(response.data.id);
+  });
+
+  test('should list user API keys', async ({ page }) => {
+    const aliceClient = await authRequest(USERS.ALICE.id);
+
+    // Create multiple API keys
+    const key1Response = await aliceClient.post('/api-keys', {
+      name: 'Production Key'
+    });
+    testResources.apiKeys.alice.push(key1Response.data.id);
+
+    const key2Response = await aliceClient.post('/api-keys', {
+      name: 'Development Key'
+    });
+    testResources.apiKeys.alice.push(key2Response.data.id);
+
+    const key3Response = await aliceClient.post('/api-keys', {});
+    testResources.apiKeys.alice.push(key3Response.data.id);
+
+    // List API keys
+    const listResponse = await aliceClient.get('/api-keys');
+
+    expect(listResponse.status).toBe(200);
+    expect(Array.isArray(listResponse.data)).toBe(true);
+    expect(listResponse.data.length).toBeGreaterThanOrEqual(3);
+
+    // Verify response does NOT include full key
+    for (const key of listResponse.data) {
+      expect(key).toHaveProperty('id');
+      expect(key).toHaveProperty('key_prefix');
+      expect(key).toHaveProperty('created_at');
+      expect(key).not.toHaveProperty('key');
+      expect(key).not.toHaveProperty('key_hash');
+    }
+
+    // Verify we can find our created keys
+    const createdIds = [key1Response.data.id, key2Response.data.id, key3Response.data.id];
+    const returnedIds = listResponse.data.map(k => k.id);
+    for (const id of createdIds) {
+      expect(returnedIds).toContain(id);
+    }
+  });
+
+  test('should authenticate using an API key', async ({ page }) => {
+    const aliceClient = await authRequest(USERS.ALICE.id);
+
+    // Create an API key
+    const keyResponse = await aliceClient.post('/api-keys', {
+      name: 'Auth Test Key'
+    });
+    const apiKey = keyResponse.data.key;
+    testResources.apiKeys.alice.push(keyResponse.data.id);
+    const apiKeyClient = apiKeyRequest(apiKey);
+
+    // Make a request with the API key
+    const response = await apiKeyClient.get('/bookings');
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(response.data)).toBe(true);
+  });
+
+  test('should be able to use API key for all protected endpoints', async ({ page }) => {
+    const bobClient = await authRequest(USERS.BOB.id);
+
+    // Create an API key for Bob
+    const keyResponse = await bobClient.post('/api-keys', {
+      name: 'Full Test Key'
+    });
+    const apiKey = keyResponse.data.key;
+    testResources.apiKeys.bob.push(keyResponse.data.id);
+
+    const apiKeyClient = apiKeyRequest(apiKey);
+
+    const roomsResponse = await apiKeyClient.get('/rooms');
+    expect(roomsResponse.status).toBe(200);
+    expect(Array.isArray(roomsResponse.data)).toBe(true);
+
+    const now = new Date();
+    const startTime = new Date(now.getTime() + 500 * 24 * 60 * 60 * 1000); // 500 days future
+    const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
+
+    const createResponse = await apiKeyClient.post('/bookings', {
+      room_id: testRoomId,
+      start_time: startTime.toISOString(),
+      end_time: endTime.toISOString(),
+      notes: 'API Key Test Booking'
+    });
+    expect(createResponse.status).toBe(201);
+    const bookingId = createResponse.data.id;
+    testResources.bookings.bob.push(bookingId);
+
+    const bookingsResponse = await apiKeyClient.get('/bookings');
+    expect(bookingsResponse.status).toBe(200);
+    const booking = bookingsResponse.data.find(b => b.id === bookingId);
+    expect(booking).toBeDefined();
+
+    const deleteResponse = await apiKeyClient.delete(`/bookings/${bookingId}`);
+    expect(deleteResponse.status).toBe(200);
+
+    testResources.bookings.bob = testResources.bookings.bob.filter(id => id !== bookingId);
+  });
+
+  test('should delete an API key', async ({ page }) => {
+    const aliceClient = await authRequest(USERS.ALICE.id);
+
+    // Create an API key
+    const keyResponse = await aliceClient.post('/api-keys', {
+      name: 'Key To Delete'
+    });
+    const keyId = keyResponse.data.id;
+
+    const deleteResponse = await aliceClient.delete(`/api-keys/${keyId}`);
+    expect(deleteResponse.status).toBe(200);
+    expect(deleteResponse.data.message).toContain('deleted successfully');
+
+    const listResponse = await aliceClient.get('/api-keys');
+    const keyIds = listResponse.data.map(k => k.id);
+    expect(keyIds).not.toContain(keyId);
+  });
+
+  test('should not allow deleted API key to authenticate', async ({ page }) => {
+    const aliceClient = await authRequest(USERS.ALICE.id);
+
+    // Create an API key
+    const keyResponse = await aliceClient.post('/api-keys', {
+      name: 'Key To Test Deletion'
+    });
+    const apiKey = keyResponse.data.key;
+    const keyId = keyResponse.data.id;
+
+    const apiKeyClient = apiKeyRequest(apiKey);
+    const testResponse = await apiKeyClient.get('/rooms');
+    expect(testResponse.status).toBe(200);
+
+    await aliceClient.delete(`/api-keys/${keyId}`);
+
+    try {
+      await apiKeyClient.get('/rooms');
+      expect(false).toBe(true, 'Should not allow authentication with deleted API key');
+    } catch (error) {
+      expect(error.response?.status).toBe(401);
+      expect(error.response?.data.error).toContain('Authentication required');
+    }
+  });
+
+  test('should not allow users to delete other users\' API keys', async ({ page }) => {
+    const bobClient = await authRequest(USERS.BOB.id);
+    const aliceClient = await authRequest(USERS.ALICE.id);
+
+    // Create an API key for Bob
+    const bobKeyResponse = await bobClient.post('/api-keys', {
+      name: 'Bob\'s Protected Key'
+    });
+    const bobKeyId = bobKeyResponse.data.id;
+    testResources.apiKeys.bob.push(bobKeyId);
+
+    // Try to delete Bob's key as Alice
+    try {
+      await aliceClient.delete(`/api-keys/${bobKeyId}`);
+      expect(false).toBe(true, 'Should not allow deleting another user\'s API key');
+    } catch (error) {
+      expect([403, 404]).toContain(error.response?.status);
+    }
+
+    // Verify Bob's key still exists
+    const bobListResponse = await bobClient.get('/api-keys');
+    const bobKeyIds = bobListResponse.data.map(k => k.id);
+    expect(bobKeyIds).toContain(bobKeyId);
+  });
+
+  test('should not allow users to see other users\' API keys', async ({ page }) => {
+    const bobClient = await authRequest(USERS.BOB.id);
+    const aliceClient = await authRequest(USERS.ALICE.id);
+
+    // Create an API key for Bob
+    const bobKeyResponse = await bobClient.post('/api-keys', {
+      name: 'Bob\'s Private Key'
+    });
+    testResources.apiKeys.bob.push(bobKeyResponse.data.id);
+
+    // Create an API key for Alice
+    const aliceKeyResponse = await aliceClient.post('/api-keys', {
+      name: 'Alice\'s Private Key'
+    });
+    testResources.apiKeys.alice.push(aliceKeyResponse.data.id);
+
+    // List Alice's keys
+    const aliceListResponse = await aliceClient.get('/api-keys');
+    const aliceKeyIds = aliceListResponse.data.map(k => k.id);
+
+    // Verify Alice's list does NOT contain Bob's key
+    expect(aliceKeyIds).not.toContain(bobKeyResponse.data.id);
+    // Verify Alice's list DOES contain her own key
+    expect(aliceKeyIds).toContain(aliceKeyResponse.data.id);
+  });
+
+  test('should return 401 for invalid API key', async ({ page }) => {
+    // Use a fake/random API key
+    const fakeApiKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    const apiKeyClient = apiKeyRequest(fakeApiKey);
+
+    // Try to access a protected endpoint
+    try {
+      await apiKeyClient.get('/rooms');
+      expect(false).toBe(true, 'Should not allow authentication with invalid API key');
+    } catch (error) {
+      expect(error.response?.status).toBe(401);
+      expect(error.response?.data.error).toContain('Authentication required');
+    }
+  });
+
+  test('should update last_used_at timestamp when using API key', async ({ page }) => {
+    const aliceClient = await authRequest(USERS.ALICE.id);
+
+    // Create an API key
+    const keyResponse = await aliceClient.post('/api-keys', {
+      name: 'Timestamp Test Key'
+    });
+    const apiKey = keyResponse.data.key;
+    const keyId = keyResponse.data.id;
+    testResources.apiKeys.alice.push(keyId);
+
+    // Check initial state - last_used_at should be null
+    const initialListResponse = await aliceClient.get('/api-keys');
+    const initialKey = initialListResponse.data.find(k => k.id === keyId);
+    expect(initialKey.last_used_at).toBeNull();
+
+    // Use the API key to make a request
+    const apiKeyClient = apiKeyRequest(apiKey);
+    await apiKeyClient.get('/rooms');
+
+    // Check updated state - last_used_at should now be set
+    const updatedListResponse = await aliceClient.get('/api-keys');
+    const updatedKey = updatedListResponse.data.find(k => k.id === keyId);
+    console.log(updatedKey);
+    expect(updatedKey.last_used_at).not.toBeNull();
+
+    // Verify it's a recent timestamp (within last minute)
+    const lastUsedTime = new Date(updatedKey.last_used_at);
+    const now = new Date();
+    const timeDiff = now - lastUsedTime;
+    expect(timeDiff).toBeLessThan(60 * 1000); // Less than 1 minute ago
   });
 });

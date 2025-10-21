@@ -144,5 +144,32 @@ export async function authRequest(userId) {
   }
 }
 
+/**
+ * Helper for making authenticated requests using an API key
+ * Uses Authorization: Bearer <key> header for authentication
+ */
+export function apiKeyRequest(apiKey) {
+  // Create an Axios instance with the API key in the Authorization header
+  const instance = axios.create({
+    baseURL: API_BASE_URL,
+    headers: {
+      'Authorization': `Bearer ${apiKey}`
+    }
+  });
+
+  console.log(`Created API key authenticated client with key prefix: ${apiKey.substring(0, 8)}...`);
+
+  // Return a client object with convenience methods matching authRequest
+  return {
+    get: (path, config) => instance.get(path, config),
+    post: (path, data, config) => instance.post(path, data, config),
+    put: (path, data, config) => instance.put(path, data, config),
+    delete: (path, config) => instance.delete(path, config),
+
+    // The raw axios instance for advanced usage
+    axios: instance
+  };
+}
+
 // Export the API base URL
 export { API_BASE_URL };
