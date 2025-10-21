@@ -50,8 +50,12 @@ const TEST_USERS = [
   }
 ];
 
+const migrationDir = path.join(__dirname, '..', 'migrations');
 // Path to the SQL migration file
-const migrationFilePath = path.join(__dirname, '..', 'migrations', '001_init.sql');
+const migrationFilePaths = [
+  path.join(migrationDir, '001_init.sql'),
+  path.join(migrationDir, '002_api_keys.sql'),
+];
 
 // Log database connection details (excluding password)
 console.log('Database connection details:');
@@ -146,14 +150,16 @@ async function setupTestDatabase() {
       if (!tablesExist) {
         console.log('Tables do not exist, running migration...');
 
-        // Read the migration SQL file
-        console.log(`Reading migration file from ${migrationFilePath}`);
-        const migrationSQL = fs.readFileSync(migrationFilePath, 'utf8');
+        for (const filePath of migrationFilePaths) {
+          // Read the migration SQL file
+          console.log(`Reading migration file from ${filePath}`);
+          const migrationSQL = fs.readFileSync(filePath, 'utf8');
 
-        // Run the migration
-        console.log('Running SQL migration...');
-        await client.query(migrationSQL);
-        console.log('Migration completed');
+          // Run the migration
+          console.log('Running SQL migration...');
+          await client.query(migrationSQL);
+          console.log('Migration completed');
+        }
       } else {
         console.log('Tables already exist, skipping migration');
       }

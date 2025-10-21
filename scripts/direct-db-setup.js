@@ -62,6 +62,9 @@ async function setupDatabase() {
       if (files.includes('_001_init.sql')) {
         migrationFiles.push('_001_init.sql');
       }
+      if (files.includes('002_api_keys.sql')) {
+        migrationFiles.push('002_api_keys.sql');
+      }
 
       if (migrationFiles.length === 0) {
         throw new Error('Migration files not found in directory');
