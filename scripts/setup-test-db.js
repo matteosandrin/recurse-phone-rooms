@@ -50,12 +50,17 @@ const TEST_USERS = [
   }
 ];
 
-const migrationDir = path.join(__dirname, '..', 'migrations');
-// Path to the SQL migration file
-const migrationFilePaths = [
-  path.join(migrationDir, '001_init.sql'),
-  path.join(migrationDir, '002_api_keys.sql'),
-];
+// List migration files in directory
+const migrationsDir = path.join(__dirname, '..', 'migrations');
+console.log('Checking migrations directory:', migrationsDir);
+
+const files = fs.readdirSync(migrationsDir);
+console.log('Files in migrations directory:', files);
+
+// Find the migration files (those that end with .sql)
+let migrationFiles = files
+  .filter(file => file.endsWith('.sql'))
+  .sort();
 
 // Log database connection details (excluding password)
 console.log('Database connection details:');
@@ -150,8 +155,9 @@ async function setupTestDatabase() {
       if (!tablesExist) {
         console.log('Tables do not exist, running migration...');
 
-        for (const filePath of migrationFilePaths) {
+        for (const migrationFile of migrationFiles) {
           // Read the migration SQL file
+          const filePath = path.join(migrationsDir, migrationFile);
           console.log(`Reading migration file from ${filePath}`);
           const migrationSQL = fs.readFileSync(filePath, 'utf8');
 
